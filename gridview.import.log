@@ -1,0 +1,288 @@
+2026-08-05 11:48:29:开始构建镜像...
+2026-08-05 11:48:29:docker load 加载镜像 /lenovofs1/home/xshu/cuda-ssh.tar
+2026-08-05 11:48:31:源镜像的名称和Tag localhost/cuda-ssh:latest
+2026-08-05 11:48:31:为容器添加必须的ssh与sudo...
+pull image image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea successfully.
+Not supported ubuntu_version_24.04.
+docker build directory is located at /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996
+cd /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996 && docker build --build-arg VALID_VERSION=false --build-arg VERSION= -f /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996/Dockerfile -t  image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd .
+Sending build context to Docker daemon  411.6kB
+Step 1/20 : FROM image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea
+ ---> df0cc090a289
+Step 2/20 : LABEL author="sugon" email="sugon@sugon.com"            author="slurm " email="slurm@sugon.com"
+ ---> Running in 6e4c06d0a005
+ ---> Removed intermediate container 6e4c06d0a005
+ ---> 920345464f2f
+Step 3/20 : USER root
+ ---> Running in f117094e6ab3
+ ---> Removed intermediate container f117094e6ab3
+ ---> 371715cb6f15
+Step 4/20 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Running in b90ea51694b7
+ ---> Removed intermediate container b90ea51694b7
+ ---> e0b17a62c741
+Step 5/20 : ENV TZ=Asia/Shanghai
+ ---> Running in 3642e927efd0
+ ---> Removed intermediate container 3642e927efd0
+ ---> 98b799131f3e
+Step 6/20 : ARG VALID_VERSION
+ ---> Running in 0228681e2c71
+ ---> Removed intermediate container 0228681e2c71
+ ---> e3762481ef60
+Step 7/20 : ARG VERSION
+ ---> Running in c2981877743f
+ ---> Removed intermediate container c2981877743f
+ ---> b4d16980872d
+Step 8/20 : ARG tmp_source_dir=/tmp/source
+ ---> Running in f301c779de0b
+ ---> Removed intermediate container f301c779de0b
+ ---> 51416bd0e2d8
+Step 9/20 : ARG tmp_resouce_dir=/tmp/resource_pkg_dir
+ ---> Running in 7267d44c3fcb
+ ---> Removed intermediate container 7267d44c3fcb
+ ---> 7c23894a2217
+Step 10/20 : RUN if [ -d "$tmp_source_dir" ];then rm -rf "$tmp_source_dir"/* ;else mkdir -p "$tmp_source_dir"; fi &&       if [ -d "$tmp_resouce_dir" ];then rm -rf "$tmp_resouce_dir"/* ;else mkdir -p "$tmp_resouce_dir"; fi
+ ---> Running in e37d0db7100a
+ ---> Removed intermediate container e37d0db7100a
+ ---> a8355368a862
+Step 11/20 : COPY ./source "$tmp_source_dir"
+ ---> f3efadfdb3de
+Step 12/20 : COPY ./resource "$tmp_resouce_dir"
+ ---> c57577c9fa9d
+Step 13/20 : RUN if [ "$VALID_VERSION" = "true" ];then rm -rf /etc/apt/* && cp -r "$tmp_source_dir"/* /etc/apt/; fi
+ ---> Running in cf3d49884a1b
+ ---> Removed intermediate container cf3d49884a1b
+ ---> 193e43a9e2f5
+Step 14/20 : RUN chmod -R 755 /etc/apt/ && /usr/sbin/sshd -p 22; if [ $? -ne 0 ];then apt-get update && apt-get install -y openssh-server; if [ $? -ne 0 ] && [ "$VALID_VERSION" = "true" ];then cd "$tmp_resouce_dir"; if [ "$VERSION" != "version_22.04" ] && [ "$VERSION" != "version_14.04" ];then dpkg -i libkeyutils1_1.5.9-8ubuntu1_amd64.deb libssl1.0.0_1.0.2n-1ubuntu5_amd64.deb                                   libkrb5support0_1.13.2+dfsg-5_amd64.deb libk5crypto3_1.13.2+dfsg-5_amd64.deb libkrb5-3_1.13.2+dfsg-5_amd64.deb                                   libgssapi-krb5-2_1.13.2+dfsg-5_amd64.deb ncurses-base_6.0+20160213-1ubuntu1_all.deb libtinfo5_6.0+20160213-1ubuntu1_amd64.deb libedit2_3.1-20170329-1_amd64.deb                                   openssh-client_7.2p2-4_amd64.deb openssh-sftp-server_7.2p2-4_amd64.deb libwrap0_7.6.q-27_amd64.deb                                   openssh-server_7.2p2-4_amd64.deb ssh_7.2p2-4_all.deb; else dpkg -i --force-all *.deb;fi;fi;fi
+ ---> Running in e087bdeaad25
+ ---> Removed intermediate container e087bdeaad25
+ ---> fe8c4b98e040
+Step 15/20 : RUN mkdir -p /var/run/sshd /root/.ssh
+ ---> Running in f3f1dac915c7
+ ---> Removed intermediate container f3f1dac915c7
+ ---> f7003813b3b4
+Step 16/20 : RUN if [ -f /etc/ssh/sshd_config ];then sed -i "s/#UseDNS .*/UseDNS no/" /etc/ssh/sshd_config; fi
+ ---> Running in f554222aab50
+ ---> Removed intermediate container f554222aab50
+ ---> ed1857543fc8
+Step 17/20 : RUN if [ -f /etc/pam.d/sshd ];then sed -i -r "s/^(.*pam_nologin.so)/#\1/" /etc/pam.d/sshd; fi
+ ---> Running in fe150cb23c6f
+ ---> Removed intermediate container fe150cb23c6f
+ ---> 5801c5a89969
+Step 18/20 : RUN ssh-keygen -A; if [ $? -ne 0 ];then  ssh-keygen -N sugon -t rsa -b 4096 -f ~/.ssh/id_rsa.pub ; if [ $? -ne 0 ];then echo "ssh-keygen: not found" && exit 1;fi;fi
+ ---> Running in d4f8565f4857
+ ---> Removed intermediate container d4f8565f4857
+ ---> bda3da53b792
+Step 19/20 : EXPOSE 22
+ ---> Running in 61d53241e926
+ ---> Removed intermediate container 61d53241e926
+ ---> 3ddf17ae8279
+Step 20/20 : RUN rm -rf "$tmp_source_dir" "$tmp_resouce_dir"
+ ---> Running in 6d7625104b08
+ ---> Removed intermediate container 6d7625104b08
+ ---> 54f0ce4899b1
+Successfully built 54f0ce4899b1
+Successfully tagged image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd
+Not supported ubuntu_version_24.04.
+docker build directory is located at /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996
+cd /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996 && docker build --build-arg VALID_VERSION=false --build-arg VERSION= -f /tmp/directory_5c55aaee-30e2-42f0-9a73-cef9d8122996/Dockerfile -t  image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd-sudo .
+Sending build context to Docker daemon  410.1kB
+Step 1/14 : FROM image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd
+ ---> 54f0ce4899b1
+Step 2/14 : LABEL author="sugon" email="sugon@sugon.com"            author="slurm " email="slurm@sugon.com"
+ ---> Running in 29ef563f50b9
+ ---> Removed intermediate container 29ef563f50b9
+ ---> 9cb531a85d48
+Step 3/14 : USER root
+ ---> Running in 22a8533ab5ac
+ ---> Removed intermediate container 22a8533ab5ac
+ ---> cb8a386b21d7
+Step 4/14 : ARG VALID_VERSION
+ ---> Running in d97e14caef47
+ ---> Removed intermediate container d97e14caef47
+ ---> 1a73cfe97b18
+Step 5/14 : ARG VERSION
+ ---> Running in c02c87f94f45
+ ---> Removed intermediate container c02c87f94f45
+ ---> 4ca2407fa6ca
+Step 6/14 : ARG tmp_source_dir=/tmp/source
+ ---> Running in 74ab90c1ad4d
+ ---> Removed intermediate container 74ab90c1ad4d
+ ---> 618e5cbaf571
+Step 7/14 : ARG tmp_resouce_dir=/tmp/resource_pkg_dir
+ ---> Running in baeccd6064e5
+ ---> Removed intermediate container baeccd6064e5
+ ---> cbc809360f43
+Step 8/14 : RUN if [ -d "$tmp_source_dir" ];then rm -rf "$tmp_source_dir"/* ;else mkdir -p "$tmp_source_dir"; fi &&       if [ -d "$tmp_resouce_dir" ];then rm -rf "$tmp_resouce_dir"/* ;else mkdir -p "$tmp_resouce_dir"; fi
+ ---> Running in 83e453fd9dd7
+ ---> Removed intermediate container 83e453fd9dd7
+ ---> 59eecc390f00
+Step 9/14 : COPY ./source "$tmp_source_dir"
+ ---> 57940fc9fc93
+Step 10/14 : COPY ./resource "$tmp_resouce_dir"
+ ---> 1eb5c3213a7a
+Step 11/14 : RUN if [ "$VALID_VERSION" = "true" ];then rm -rf /etc/apt/* && cp -r "$tmp_source_dir"/* /etc/apt/; fi
+ ---> Running in 1f0b4a0c1c9e
+ ---> Removed intermediate container 1f0b4a0c1c9e
+ ---> e12af79a16d4
+Step 12/14 : RUN ln -fs /bin/bash /bin/sh
+ ---> Running in a6ed3e010ccc
+ ---> Removed intermediate container a6ed3e010ccc
+ ---> fcefc938bef8
+Step 13/14 : RUN chmod -R 755 /etc/apt/ && sudo -V || /usr/bin/sudo -V || /usr/local/bin/sudo -V; if [ $? -ne 0 ]; then apt-get update && apt-get install -y sudo; if [ $? -ne 0 ] && [ "$VALID_VERSION" = "true" ];then cd "$tmp_resouce_dir" && dpkg -i *.deb; fi;fi
+ ---> Running in 87248dc8aa62
+Sudo version 1.9.15p5
+Configure options: --build=x86_64-linux-gnu --prefix=/usr --includedir=${prefix}/include --mandir=${prefix}/share/man --infodir=${prefix}/share/info --sysconfdir=/etc --localstatedir=/var --disable-option-checking --disable-silent-rules --libdir=${prefix}/lib/x86_64-linux-gnu --runstatedir=/run --disable-maintainer-mode --disable-dependency-tracking --with-all-insults --with-pam --with-pam-login --with-fqdn --with-logging=syslog --with-logfac=authpriv --with-devel --with-env-editor --with-editor=/usr/bin/editor --with-timeout=15 --with-password-timeout=0 --with-passprompt=[sudo] password for %p:  --with-tty-tickets --without-lecture --disable-root-mailer --with-sendmail=/usr/sbin/sendmail --with-rundir=/run/sudo --with-sssd --with-sssd-lib=/usr/lib/x86_64-linux-gnu --enable-zlib=system --enable-admin-flag --with-apparmor --with-selinux --with-linux-audit --enable-tmpfiles.d=/usr/lib/tmpfiles.d MVPROG=/bin/mv --with-exampledir=/usr/share/doc/sudo/examples
+Sudoers policy plugin version 1.9.15p5
+Sudoers file grammar version 50
+
+Sudoers path: /etc/sudoers
+Authentication methods: 'pam'
+Syslog facility if syslog is being used for logging: authpriv
+Syslog priority to use when user authenticates successfully: notice
+Syslog priority to use when user authenticates unsuccessfully: alert
+Send mail if user authentication fails
+Send mail if the user is not in sudoers
+Lecture user the first time they run sudo
+Require users to authenticate by default
+Root may run sudo
+Allow some information gathering to give useful error messages
+Require fully-qualified hostnames in the sudoers file
+Visudo will honor the EDITOR environment variable
+Set the LOGNAME and USER environment variables
+Length at which to wrap log file lines (0 for no wrap): 80
+Authentication timestamp timeout: 15.0 minutes
+Password prompt timeout: 0.0 minutes
+Number of tries to enter a password: 3
+Umask to use or 0777 to use user's: 022
+Path to mail program: /usr/sbin/sendmail
+Flags for mail program: -t
+Address to send mail to: root
+Subject line for mail messages: *** SECURITY information for %h ***
+Incorrect password message: Sorry, try again.
+Path to lecture status dir: /var/lib/sudo/lectured
+Path to authentication timestamp dir: /run/sudo/ts
+Default password prompt: [sudo] password for %p: 
+Default user to run commands as: root
+Value to override user's $PATH with: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+Path to the editor for use by visudo: /usr/bin/editor
+When to require a password for 'list' pseudocommand: any
+When to require a password for 'verify' pseudocommand: all
+File descriptors >= 3 will be closed before executing a command
+Reset the environment to a default set of variables
+Environment variables to check for safety:
+	TZ
+	TERM
+	LINGUAS
+	LC_*
+	LANGUAGE
+	LANG
+	COLORTERM
+Environment variables to remove:
+	*=()*
+	RUBYOPT
+	RUBYLIB
+	PYTHONUSERBASE
+	PYTHONINSPECT
+	PYTHONPATH
+	PYTHONHOME
+	TMPPREFIX
+	ZDOTDIR
+	READNULLCMD
+	NULLCMD
+	FPATH
+	PERL5DB
+	PERL5OPT
+	PERL5LIB
+	PERLLIB
+	PERLIO_DEBUG
+	JAVA_TOOL_OPTIONS
+	SHELLOPTS
+	BASHOPTS
+	GLOBIGNORE
+	PS4
+	BASH_ENV
+	ENV
+	TERMCAP
+	TERMPATH
+	TERMINFO_DIRS
+	TERMINFO
+	_RLD*
+	LD_*
+	PATH_LOCALE
+	NLSPATH
+	HOSTALIASES
+	RES_OPTIONS
+	LOCALDOMAIN
+	CDPATH
+	IFS
+Environment variables to preserve:
+	XDG_CURRENT_DESKTOP
+	XAUTHORIZATION
+	XAUTHORITY
+	PS2
+	PS1
+	PATH
+	LS_COLORS
+	KRB5CCNAME
+	HOSTNAME
+	DPKG_COLORS
+	DISPLAY
+	COLORS
+Locale to use while parsing sudoers: C
+Compress I/O logs using zlib
+Always run commands in a pseudo-tty
+Directory in which to store input/output logs: /var/log/sudo-io
+File in which to store the input/output log: %{seq}
+Add an entry to the utmp/utmpx file when allocating a pty
+PAM service name to use: sudo
+PAM service name to use for login shells: sudo-i
+Attempt to establish PAM credentials for the target user
+Create a new PAM session for the command to run in
+Perform PAM account validation management
+Enable sudoers netgroup support
+Check parent directories for writability when editing files with sudoedit
+Allow commands to be run even if sudo cannot write to the audit log
+Allow commands to be run even if sudo cannot write to the log file
+Log entries larger than this value will be split into multiple syslog messages: 960
+File mode to use for the I/O log files: 0600
+Execute commands by file descriptor instead of by path: digest_only
+Type of authentication timestamp record: tty
+Ignore case when matching user names
+Ignore case when matching group names
+Log when a command is allowed by sudoers
+Log when a command is denied by sudoers
+Sudo log server timeout in seconds: 30
+Enable SO_KEEPALIVE socket option on the socket connected to the logserver
+Verify that the log server's certificate is valid
+Set the pam remote user to the user running sudo
+The format of logs to produce: sudo
+Enable SELinux RBAC support
+Path to the file that is created the first time sudo is run: ~/.sudo_as_admin_successful
+Allow an intercepted command to run set setuid or setgid programs
+The largest size core dump file that may be created (in bytes): 0,0
+Store plaintext passwords in I/O log input
+List of regular expressions to use when matching a password prompt
+	[Pp]assword[: ]*
+The mechanism used by the intercept and log_subcmds options: trace
+Attempt to verify the command and arguments after execution
+
+Local IP address and netmask pairs:
+	173.0.36.2/255.255.255.0
+
+Sudoers I/O plugin version 1.9.15p5
+Sudoers audit plugin version 1.9.15p5
+ ---> Removed intermediate container 87248dc8aa62
+ ---> cd9178596811
+Step 14/14 : RUN rm -rf "$tmp_source_dir" "$tmp_resouce_dir"
+ ---> Running in b64a421df59b
+ ---> Removed intermediate container b64a421df59b
+ ---> 98a491d4e860
+Successfully built 98a491d4e860
+Successfully tagged image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd-sudo
+tag image.ac.com:5000/gpu/xshu/base/cuda-ssh01deea:cuda01deea-sshd-sudo to final image image.ac.com:5000/gpu/xshu/base/cuda-ssh:cuda...
+image have been build successfully. url is : image.ac.com:5000/gpu/xshu/base/cuda-ssh:cuda.
+2026-08-05 11:48:42:开始镜像推送...
+...
+2026-08-05 11:48:48:镜像推送成功
+2026-08-05 11:48:48:制作镜像成功
