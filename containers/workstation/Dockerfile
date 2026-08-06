@@ -53,34 +53,21 @@ RUN apt-get update \
         -e 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' \
         /etc/locale.gen \
     && locale-gen C.UTF-8 en_US.UTF-8 \
-    && mkdir -p /run/sshd /root/.ssh \
+    && mkdir -p /etc/ssh/sshd_config.d /run/sshd /root/.ssh \
     && ssh-keygen -A \
-    && sed -i \
-        -e 's/^#PermitRootLogin.*/PermitRootLogin prohibit-password/' \
-        -e 's/^PermitRootLogin.*/PermitRootLogin prohibit-password/' \
-        -e 's/^#PasswordAuthentication.*/PasswordAuthentication no/' \
-        -e 's/^PasswordAuthentication.*/PasswordAuthentication no/' \
-        -e 's/^#PubkeyAuthentication.*/PubkeyAuthentication yes/' \
-        -e 's/^PubkeyAuthentication.*/PubkeyAuthentication yes/' \
-        /etc/ssh/sshd_config \
     && rm -rf /var/lib/apt/lists/*
+
+COPY containers/workstation/sshd_config /etc/ssh/sshd_config.d/10-cryosparc.conf
 
 FROM runtime-base AS installer
 
 ARG CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
-ARG CRYOSPARC_INITIAL_EMAIL=admin@example.org
-ARG CRYOSPARC_INITIAL_USERNAME=admin
-ARG CRYOSPARC_INITIAL_FIRSTNAME=Cryo
-ARG CRYOSPARC_INITIAL_LASTNAME=SPARC
-ARG CRYOSPARC_INITIAL_PASSWORD=Passw0rd
 ARG CRYOSPARC_WORKER_NOGPU=true
 
 ENV CRYOSPARC_FORCE_HOSTNAME=true
 
 COPY --from=package-unpack /opt/cryosparc /opt/cryosparc
 COPY --from=package-unpack /build/pkg /build/pkg
-
-RUN test -n "${CRYOSPARC_INITIAL_PASSWORD}"
 
 # The bundled installer probes the license server for patches. The patch files
 # are supplied locally, so skip that network-only probe and install them below.
@@ -110,24 +97,18 @@ RUN cp /build/pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/
     && export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm start \
-    && ./bin/cryosparcm user create \
-        --email "${CRYOSPARC_INITIAL_EMAIL}" \
-        --password "${CRYOSPARC_INITIAL_PASSWORD}" \
-        --username "${CRYOSPARC_INITIAL_USERNAME}" \
-        --firstname "${CRYOSPARC_INITIAL_FIRSTNAME}" \
-        --lastname "${CRYOSPARC_INITIAL_LASTNAME}" \
     && ./bin/cryosparcm patch --install --yes \
     && cd /opt/cryosparc/cryosparc_worker \
     && ./bin/cryosparcw patch \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm stop \
-    && chmod -R u+rwX,go+rX /opt/cryosparc/initial/cryosparc_database \
     && rm -f \
         /opt/cryosparc/cryosparc_master/cryosparc_master_patch.tar.gz \
         /opt/cryosparc/cryosparc_worker/cryosparc_worker_patch.tar.gz \
     && rm -rf \
         /opt/cryosparc/cryosparc_master/run \
         /opt/cryosparc/cryosparc_worker/run \
+        /opt/cryosparc/initial \
         /build/pkg
 
 FROM runtime-base AS workstation
@@ -138,7 +119,7 @@ ENV LANG=en_US.UTF-8 \
     CRYOSPARC_BASE_PORT=61000
 
 COPY --from=installer /opt/cryosparc /opt/cryosparc
-COPY containers/workstation/run.sh /usr/local/bin/cryosparc-workstation
+COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
 
 RUN chmod 755 /usr/local/bin/cryosparc-workstation
 

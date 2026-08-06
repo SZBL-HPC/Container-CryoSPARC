@@ -13,23 +13,12 @@ if ! command -v "${PODMAN_BIN}" >/dev/null 2>&1; then
     exit 1
 fi
 
-INITIAL_PASSWORD="${CRYOSPARC_INITIAL_PASSWORD:-Passw0rd}"
-if [[ "${INITIAL_PASSWORD}" == Passw0rd ]]; then
-    printf 'Warning: using the default initial password; set CRYOSPARC_INITIAL_PASSWORD for production.\n' >&2
-fi
-
 BUILD_ARGS=(
     --build-arg "CUDA_IMAGE=${CUDA_IMAGE}"
-    --build-arg "CRYOSPARC_INITIAL_PASSWORD=${INITIAL_PASSWORD}"
     --build-arg "CRYOSPARC_WORKER_NOGPU=${WORKER_NOGPU}"
 )
 
-for name in \
-    CRYOSPARC_INITIAL_EMAIL \
-    CRYOSPARC_INITIAL_USERNAME \
-    CRYOSPARC_INITIAL_FIRSTNAME \
-    CRYOSPARC_INITIAL_LASTNAME \
-    CRYOSPARC_BUILD_LICENSE_ID; do
+for name in CRYOSPARC_BUILD_LICENSE_ID; do
     if [[ -n "${!name:-}" ]]; then
         BUILD_ARGS+=(--build-arg "${name}=${!name}")
     fi

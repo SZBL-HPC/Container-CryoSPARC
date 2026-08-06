@@ -1,0 +1,634 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# The platform may inject an unavailable locale such as en_US.UTF-8 into the
+# SSH environment. Redis refuses to start with that locale.
+export LANG="${CRYOSPARC_LANG:-en_US.UTF-8}"
+export LC_ALL="${CRYOSPARC_LOCALE:-en_US.UTF-8}"
+
+INSTALL_ROOT="${CRYOSPARC_INSTALL_ROOT:-/opt/cryosparc}"
+MASTER_ROOT="${INSTALL_ROOT}/cryosparc_master"
+WORKER_ROOT="${INSTALL_ROOT}/cryosparc_worker"
+
+: "${HOME:?HOME must be set}"
+
+CRYOSPARC_HOME="${CRYOSPARC_HOME:-${HOME}/.cryosparc}"
+DB_PATH="${CRYOSPARC_HOME}/cryosparc_database"
+SCRATCH_PATH="${CRYOSPARC_HOME}/scratch"
+PROJECTS_PATH="${HOME}/cryosparc_projects"
+LICENSE_FILE="${CRYOSPARC_HOME}/license_id"
+INIT_MARKER="${CRYOSPARC_HOME}/.initialized"
+MASTER_CONFIG_DIR="${CRYOSPARC_HOME}/master"
+WORKER_CONFIG_DIR="${CRYOSPARC_HOME}/worker"
+
+requested_license="${CRYOSPARC_LICENSE_ID:-}"
+requested_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
+requested_base_port="${CRYOSPARC_BASE_PORT:-}"
+
+source "${MASTER_ROOT}/config.sh"
+
+runtime_hostname=""
+runtime_base_port=""
+runtime_license=""
+if [[ -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
+    source "${MASTER_CONFIG_DIR}/config.sh"
+    runtime_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
+    runtime_base_port="${CRYOSPARC_BASE_PORT:-}"
+    runtime_license="${CRYOSPARC_LICENSE_ID:-}"
+fi
+
+BASE_PORT="${requested_base_port:-${runtime_base_port:-${CRYOSPARC_BASE_PORT:-61000}}}"
+
+detect_hostname() {
+    local hostname_value
+
+    hostname_value="$(hostname -f 2>/dev/null || true)"
+    if [[ -z "${hostname_value}" ]]; then
+        hostname_value="$(hostname)"
+    fi
+    printf '%s' "${hostname_value}"
+}
+
+MASTER_HOSTNAME="${requested_hostname:-${runtime_hostname:-$(detect_hostname)}}"
+WORKER_NAME="${CRYOSPARC_WORKER_NAME:-${MASTER_HOSTNAME}}"
+current_user="$(id -un 2>/dev/null || true)"
+SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
+SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
+
+export USER="${USER:-${SSH_USER}}"
+export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+export CRYOSPARC_FORCE_USER=true
+export CRYOSPARC_FORCE_HOSTNAME=true
+
+mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+
+set_config_value() {
+    local config_file="$1"
+    local config_key="$2"
+    local config_value="$3"
+    local quoted_value
+    local temporary_file
+
+    printf -v quoted_value '%q' "${config_value}"
+    temporary_file="$(mktemp "${config_file}.XXXXXX")"
+    awk -v key="${config_key}" -v value="${quoted_value}" '
+        index($0, "export " key "=") == 1 {
+            print "export " key "=" value
+            found = 1
+            next
+        }
+        { print }
+        END {
+            if (!found) print "export " key "=" value
+        }
+    ' "${config_file}" > "${temporary_file}"
+    mv "${temporary_file}" "${config_file}"
+}
+
+license_is_valid() {
+    [[ "${1:-}" =~ ^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$ ]]
+}
+
+load_license() {
+    local license_id=""
+
+    if [[ -s "${LICENSE_FILE}" ]]; then
+        license_id="$(tr -d '[:space:]' < "${LICENSE_FILE}")"
+    elif [[ -n "${requested_license}" ]]; then
+        license_id="${requested_license}"
+    elif [[ -n "${runtime_license}" ]]; then
+        license_id="${runtime_license}"
+    elif [[ -t 0 ]]; then
+        read -r -p 'CryoSPARC license ID: ' license_id || true
+    else
+        printf 'No CryoSPARC license found. Run with a terminal or set CRYOSPARC_LICENSE_ID.\n' >&2
+        return 1
+    fi
+
+    if ! license_is_valid "${license_id}"; then
+        printf 'Invalid CryoSPARC license ID.\n' >&2
+        return 1
+    fi
+
+    LICENSE_ID="${license_id}"
+    if [[ ! -s "${LICENSE_FILE}" ]]; then
+        (umask 077; printf '%s\n' "${LICENSE_ID}" > "${LICENSE_FILE}")
+    fi
+}
+
+ensure_runtime_config() {
+    load_license
+
+    if [[ ! -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
+        cp "${MASTER_ROOT}/config.sh" "${MASTER_CONFIG_DIR}/config.sh"
+    fi
+
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_LICENSE_ID "${LICENSE_ID}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME "${MASTER_HOSTNAME}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_BASE_PORT "${BASE_PORT}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_DB_PATH "${DB_PATH}"
+
+    printf 'export CRYOSPARC_LICENSE_ID=%q\n' "${LICENSE_ID}" > "${WORKER_CONFIG_DIR}/config.sh"
+
+    # Keep the values available to the CryoSPARC CLI and its Python environment.
+    export CRYOSPARC_LICENSE_ID="${LICENSE_ID}"
+    export CRYOSPARC_MASTER_HOSTNAME="${MASTER_HOSTNAME}"
+    export CRYOSPARC_BASE_PORT="${BASE_PORT}"
+    export CRYOSPARC_DB_PATH="${DB_PATH}"
+}
+
+supervisor_pid_file="${MASTER_CONFIG_DIR}/run/supervisord.pid"
+
+supervisor_running() {
+    local supervisor_pid
+
+    [[ -s "${supervisor_pid_file}" ]] || return 1
+    read -r supervisor_pid < "${supervisor_pid_file}"
+    [[ "${supervisor_pid}" =~ ^[0-9]+$ ]] || return 1
+    kill -0 "${supervisor_pid}" 2>/dev/null
+}
+
+web_listening() {
+    ss -ltnH "sport = :${BASE_PORT}" 2>/dev/null | grep -q .
+}
+
+data_present() {
+    [[ -d "${DB_PATH}" ]] && [[ -n "$(find "${DB_PATH}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+}
+
+initialized() {
+    [[ -f "${INIT_MARKER}" ]] || data_present
+}
+
+start_master_daemon() {
+    local attempt
+    local start_output
+    local start_status
+
+    if supervisor_running; then
+        return 0
+    fi
+
+    for attempt in 1 2 3; do
+        start_status=0
+        start_output="$("${MASTER_ROOT}/bin/cryosparcm" start 2>&1)" || start_status=$?
+
+        if [[ "${start_status}" -eq 0 ]]; then
+            printf '%s\n' "${start_output}"
+            return 0
+        fi
+
+        # A startup race can leave supervisor/API running even though the
+        # top-level command returned 503. The remaining services are started
+        # explicitly after the API becomes ready.
+        if supervisor_running; then
+            printf 'CryoSPARC master is starting; waiting for API readiness.\n'
+            return 0
+        fi
+
+        printf '%s\n' "${start_output}" >&2
+        printf 'CryoSPARC master is not ready; retrying (%s/3)\n' "${attempt}" >&2
+        sleep 5
+    done
+
+    return 1
+}
+
+wait_for_api() {
+    local api_port=$((BASE_PORT + 2))
+    local attempt
+
+    for attempt in {1..30}; do
+        if curl --noproxy '*' --fail --silent --show-error --max-time 5 \
+            -H "License-ID: ${LICENSE_ID}" \
+            "http://127.0.0.1:${api_port}/" >/dev/null; then
+            return 0
+        fi
+        sleep 2
+    done
+
+    printf 'CryoSPARC API did not become ready on port %s\n' "${api_port}" >&2
+    return 1
+}
+
+start_application_services() {
+    local service
+
+    for service in scheduler command_vis app app_api; do
+        "${MASTER_ROOT}/bin/cryosparcm" start "${service}"
+    done
+}
+
+wait_for_web() {
+    local attempt
+
+    for attempt in {1..30}; do
+        if curl --noproxy '*' --fail --silent --show-error --max-time 5 \
+            "http://127.0.0.1:${BASE_PORT}/" >/dev/null; then
+            return 0
+        fi
+        sleep 2
+    done
+
+    printf 'CryoSPARC web service did not become ready on port %s\n' "${BASE_PORT}" >&2
+    return 1
+}
+
+connect_worker() {
+    local gpu_args=()
+
+    export CRYOSPARC_CONFIG_DIR="${WORKER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${WORKER_CONFIG_DIR}/run"
+
+    if [[ "${CRYOSPARC_NOGPU:-false}" == "true" ]] \
+        || ! command -v nvidia-smi >/dev/null 2>&1 \
+        || ! nvidia-smi -L >/dev/null 2>&1; then
+        gpu_args+=(--nogpu)
+    fi
+
+    "${WORKER_ROOT}/bin/cryosparcw" connect \
+        --license "${LICENSE_ID}" \
+        --master "${MASTER_HOSTNAME}" \
+        --port "${BASE_PORT}" \
+        --worker "${WORKER_NAME}" \
+        --sshstr "${SSH_STRING}" \
+        --ssdpath "${SCRATCH_PATH}" \
+        "${gpu_args[@]}"
+
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+}
+
+start_core_services() {
+    ensure_runtime_config
+    mkdir -p "${DB_PATH}" "${SCRATCH_PATH}" "${PROJECTS_PATH}"
+    start_master_daemon
+    wait_for_api
+    start_application_services
+    wait_for_web
+}
+
+prompt_value() {
+    local variable_name="$1"
+    local label="$2"
+    local default_value="$3"
+    local value=""
+
+    if [[ -t 0 ]]; then
+        read -r -p "${label} [${default_value}]: " value || true
+        value="${value:-${default_value}}"
+    else
+        value="${default_value}"
+    fi
+    printf -v "${variable_name}" '%s' "${value}"
+}
+
+prompt_password() {
+    local variable_name="$1"
+    local default_value="$2"
+    local value=""
+    local confirmation=""
+
+    if [[ -t 0 ]]; then
+        read -r -s -p "Password [default]: " value || true
+        printf '\n'
+        value="${value:-${default_value}}"
+        read -r -s -p 'Confirm password: ' confirmation || true
+        printf '\n'
+        confirmation="${confirmation:-${default_value}}"
+        if [[ "${value}" != "${confirmation}" ]]; then
+            printf 'Passwords do not match.\n' >&2
+            return 1
+        fi
+    else
+        value="${default_value}"
+    fi
+
+    printf -v "${variable_name}" '%s' "${value}"
+}
+
+split_name() {
+    local full_name="$1"
+
+    read -r INITIAL_FIRSTNAME INITIAL_LASTNAME <<< "${full_name}"
+    INITIAL_FIRSTNAME="${INITIAL_FIRSTNAME:-Cryo}"
+    INITIAL_LASTNAME="${INITIAL_LASTNAME:-${INITIAL_FIRSTNAME}}"
+}
+
+username_from_email() {
+    local email="$1"
+    local username
+
+    username="${email%@*}"
+    username="$(printf '%s' "${username}" | tr -cd '[:alnum:]_-')"
+    printf '%s' "${username:-hpc}"
+}
+
+collect_user_values() {
+    local default_email="${1:-${CRYOSPARC_INITIAL_EMAIL:-hpc@szbl.ac.cn}}"
+    local default_name="${2:-${CRYOSPARC_INITIAL_NAME:-Cryo Sparc}}"
+    local default_password="${3:-${CRYOSPARC_INITIAL_PASSWORD:-Passw0rd}}"
+
+    prompt_value INITIAL_EMAIL 'Email' "${default_email}"
+    prompt_value INITIAL_NAME 'Name' "${default_name}"
+    prompt_password INITIAL_PASSWORD "${default_password}"
+    split_name "${INITIAL_NAME}"
+    INITIAL_USERNAME="${CRYOSPARC_INITIAL_USERNAME:-$(username_from_email "${INITIAL_EMAIL}")}"
+}
+
+set_default_user_values() {
+    INITIAL_EMAIL='hpc@szbl.ac.cn'
+    INITIAL_USERNAME='hpc'
+    INITIAL_FIRSTNAME='Cryo'
+    INITIAL_LASTNAME='Sparc'
+    INITIAL_PASSWORD='Passw0rd'
+}
+
+create_initial_user() {
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+
+    "${MASTER_ROOT}/bin/cryosparcm" user create \
+        --email "${INITIAL_EMAIL}" \
+        --password "${INITIAL_PASSWORD}" \
+        --username "${INITIAL_USERNAME}" \
+        --firstname "${INITIAL_FIRSTNAME}" \
+        --lastname "${INITIAL_LASTNAME}" \
+        --role admin
+}
+
+print_user_info() {
+    printf 'User information:\n'
+    printf '  Email: %s\n' "${INITIAL_EMAIL}"
+    printf '  Username: %s\n' "${INITIAL_USERNAME}"
+    printf '  Name: %s %s\n' "${INITIAL_FIRSTNAME}" "${INITIAL_LASTNAME}"
+    printf '  Password: %s\n' "${INITIAL_PASSWORD}"
+}
+
+run_master_python() {
+    local env_dir="${CRYOSPARC_ENV_DIR:-${MASTER_ROOT}/.pixi/envs/master}"
+
+    (
+        cd "${MASTER_ROOT}"
+        unset CONDA_PREFIX PYTHONHOME
+        export PYTHONPATH="${MASTER_ROOT}"
+        export PATH="${MASTER_ROOT}/deps/external/mongodb/bin:${MASTER_ROOT}/bin:${PATH}"
+        export NUMPY_MADVISE_HUGEPAGE=0
+        export MKL_NUM_THREADS=1
+        export NUMEXPR_NUM_THREADS=1
+        export OMP_NUM_THREADS=1
+        export LD_PRELOAD="${env_dir}/lib/libpython3.12.so"
+        "${env_dir}/bin/python" -P -s -
+    )
+}
+
+init_command() {
+    if data_present; then
+        printf 'already initialized; skipping init\n'
+        return 0
+    fi
+
+    collect_user_values
+    start_core_services
+    create_initial_user
+    touch "${INIT_MARKER}"
+    connect_worker
+    printf 'initialized\n'
+    print_user_info
+}
+
+start_command() {
+    if ! initialized; then
+        printf 'CryoSPARC is not initialized; run init first.\n' >&2
+        return 1
+    fi
+
+    if supervisor_running && web_listening; then
+        printf 'already started; skipping start\n'
+        return 0
+    fi
+
+    start_core_services
+    connect_worker
+    printf 'started\n'
+}
+
+stop_command() {
+    if ! supervisor_running; then
+        printf 'already stopped; skipping stop\n'
+        return 0
+    fi
+
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+    "${MASTER_ROOT}/bin/cryosparcm" stop
+    printf 'stopped\n'
+}
+
+restart_command() {
+    if ! initialized; then
+        printf 'CryoSPARC is not initialized; run init first.\n' >&2
+        return 1
+    fi
+
+    stop_command
+    start_command
+}
+
+container_ips() {
+    ip -4 -o addr show scope global 2>/dev/null \
+        | awk '{ sub(/\/.*/, "", $4); print $4 }' \
+        | paste -sd, -
+}
+
+status_command() {
+    local listen_addresses
+    local ips
+
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+
+    if supervisor_running; then
+        "${MASTER_ROOT}/bin/cryosparcm" status || true
+    else
+        printf 'CryoSPARC process status: STOPPED\n'
+    fi
+
+    listen_addresses="$(ss -ltnH "sport = :${BASE_PORT}" 2>/dev/null | awk '{print $4}' | sort -u | paste -sd, -)"
+    ips="$(container_ips || true)"
+    printf 'Web port: %s\n' "${BASE_PORT}"
+    if [[ -n "${listen_addresses}" ]]; then
+        printf 'Listening IP: %s\n' "${listen_addresses}"
+        printf 'Web URL: http://%s:%s/\n' "${ips:-<container-ip>}" "${BASE_PORT}"
+    else
+        printf 'Listening IP: not listening\n'
+    fi
+}
+
+confirm_destructive() {
+    local operation="$1"
+    local answer=""
+
+    if [[ "${CRYOSPARC_ASSUME_YES:-false}" == "true" ]]; then
+        return 0
+    fi
+    if [[ ! -t 0 ]]; then
+        printf '%s requires a terminal or CRYOSPARC_ASSUME_YES=true.\n' "${operation}" >&2
+        return 1
+    fi
+
+    read -r -p "${operation} will permanently delete data. Continue? [y/N] " answer || true
+    [[ "${answer}" == [yY] || "${answer}" == [yY][eE][sS] ]]
+}
+
+remove_data() {
+    rm -rf "${DB_PATH}" "${PROJECTS_PATH}" "${SCRATCH_PATH}" "${INIT_MARKER}"
+    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+}
+
+reset_data_command() {
+    confirm_destructive 'reset data'
+    stop_command
+    remove_data
+    printf 'data reset; database, projects, and scratch were removed; license configuration was preserved\n'
+}
+
+reset_user_command() {
+    if ! initialized; then
+        printf 'CryoSPARC is not initialized; run init first.\n' >&2
+        return 1
+    fi
+
+    set_default_user_values
+    ensure_runtime_config
+    if ! supervisor_running || ! web_listening; then
+        start_core_services
+    fi
+
+    export RESET_EMAIL="${INITIAL_EMAIL}"
+    export RESET_USERNAME="${INITIAL_USERNAME}"
+    export RESET_FIRSTNAME="${INITIAL_FIRSTNAME}"
+    export RESET_LASTNAME="${INITIAL_LASTNAME}"
+    export RESET_PASSWORD="${INITIAL_PASSWORD}"
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+    export CRYOSPARC_LICENSE_ID="${LICENSE_ID}"
+    export CRYOSPARC_MASTER_HOSTNAME="${MASTER_HOSTNAME}"
+    export CRYOSPARC_BASE_PORT="${BASE_PORT}"
+    export CRYOSPARC_DB_PATH="${DB_PATH}"
+
+    run_master_python <<'PY'
+import os
+
+from core import core, users
+
+core.startup()
+accounts = users.find_users()
+if not accounts:
+    raise SystemExit("No user account exists")
+
+first_user = accounts[0]
+users.update_user(
+    first_user,
+    email=os.environ["RESET_EMAIL"],
+    username=os.environ["RESET_USERNAME"],
+    first_name=os.environ["RESET_FIRSTNAME"],
+    last_name=os.environ["RESET_LASTNAME"],
+)
+users.set_password(first_user, os.environ["RESET_PASSWORD"])
+PY
+
+    printf 'reset first user\n'
+    print_user_info
+}
+
+reset_all_command() {
+    confirm_destructive 'reset all'
+    stop_command
+    rm -rf \
+        "${DB_PATH}" \
+        "${PROJECTS_PATH}" \
+        "${SCRATCH_PATH}" \
+        "${MASTER_CONFIG_DIR}" \
+        "${WORKER_CONFIG_DIR}" \
+        "${LICENSE_FILE}" \
+        "${INIT_MARKER}"
+    mkdir -p "${CRYOSPARC_HOME}"
+    printf 'all runtime data, user configuration, and license were reset\n'
+}
+
+keep_container_alive() {
+    [[ "$$" -eq 1 ]] || return 0
+
+    trap 'stop_command >/dev/null 2>&1 || true; exit 0' INT TERM
+    while :; do
+        sleep 3600 &
+        wait "$!"
+    done
+}
+
+run_default() {
+    init_command
+    start_command
+    status_command
+    keep_container_alive
+}
+
+if [[ $# -eq 0 ]]; then
+    run_default
+    exit 0
+fi
+
+command="$1"
+shift
+
+case "${command}" in
+    init)
+        [[ $# -eq 0 ]] || { printf 'init does not accept arguments.\n' >&2; exit 2; }
+        init_command
+        ;;
+    start)
+        [[ $# -eq 0 ]] || { printf 'start does not accept arguments.\n' >&2; exit 2; }
+        start_command
+        keep_container_alive
+        ;;
+    status)
+        [[ $# -eq 0 ]] || { printf 'status does not accept arguments.\n' >&2; exit 2; }
+        status_command
+        ;;
+    stop)
+        [[ $# -eq 0 ]] || { printf 'stop does not accept arguments.\n' >&2; exit 2; }
+        stop_command
+        ;;
+    restart)
+        [[ $# -eq 0 ]] || { printf 'restart does not accept arguments.\n' >&2; exit 2; }
+        restart_command
+        keep_container_alive
+        ;;
+    reset)
+        case "${1:-}" in
+            user)
+                [[ $# -eq 1 ]] || { printf 'reset user does not accept arguments.\n' >&2; exit 2; }
+                reset_user_command
+                ;;
+            data)
+                [[ $# -eq 1 ]] || { printf 'reset data does not accept arguments.\n' >&2; exit 2; }
+                reset_data_command
+                ;;
+            all)
+                [[ $# -eq 1 ]] || { printf 'reset all does not accept arguments.\n' >&2; exit 2; }
+                reset_all_command
+                ;;
+            *)
+                printf 'Usage: %s reset {user|data|all}\n' "$0" >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    *)
+        printf 'Usage: %s [init|start|status|stop|restart|reset {user|data|all}]\n' "$0" >&2
+        exit 2
+        ;;
+esac

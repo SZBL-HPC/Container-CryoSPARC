@@ -582,17 +582,17 @@ import log 显示 GridView 构建过程新增了这些内容：
 
 ```text
 containers/workstation/Dockerfile
-containers/workstation/run.sh
+containers/workstation/cryosparc-workstation
 ```
 
 Dockerfile 使用四个阶段：
 
 1. `package-unpack`：从 `pkg/cryosparc_master.tar.gz` 和 `pkg/cryosparc_worker.tar.gz` 解压安装文件。
 2. `runtime-base`：准备 CUDA 12.8.2、OpenSSH、运行库和诊断工具。
-3. `installer`：运行 master/worker 安装器，使用本地 master/worker patch 包，生成镜像内初始数据库和初始用户。
-4. `workstation`：只从安装阶段复制最终安装目录、初始数据库和 `run.sh`。
+3. `installer`：运行 master/worker 安装器，使用本地 master/worker patch 包；构建期间临时使用数据库完成安装和 patch。
+4. `workstation`：只从安装阶段复制最终安装目录和 `cryosparc-workstation`，不携带预初始化数据库或用户。
 
-构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `run.sh` 输入。
+构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `cryosparc-workstation` 输入。
 
 ### 12.2 gpu14 构建结果
 
@@ -615,9 +615,9 @@ localhost/cryosparc-workstation:test3
 - 构建阶段没有 GPU 检测失败。
 - 自动 license-server patch 探测已跳过。
 - master patch 和 worker patch 均从 `pkg/` 本地包安装。
-- 初始 master 数据库和用户创建成功。
+- 构建期间 master 数据库和 patch 安装成功；最终镜像不包含该临时数据库。
 
-### 12.3 run.sh 启动测试
+### 12.3 cryosparc-workstation 启动测试
 
 使用 rootless Podman 的 `--userns=keep-id` 运行测试。直接指定容器内 `1000:1000` 会因当前 rootless UID 映射不能写入 home 挂载；`--userns=keep-id` 可以正确保持用户 home 的 UID/GID。
 
@@ -627,7 +627,7 @@ localhost/cryosparc-workstation:test3
 | --- | --- |
 | 首次 license 配置 | 通过；本次 smoke test 用环境变量模拟输入，license 保存到 `~/.cryosparc/license_id`；TTY 交互路径由 `run.sh` 提供 |
 | license 文件权限 | `600`，由运行用户拥有 |
-| 初始数据库复制 | 通过；`~/.cryosparc/cryosparc_database` 出现 WiredTiger 文件 |
+| 首次 init 数据库 | 通过；运行时在 `~/.cryosparc/cryosparc_database` 初始化 WiredTiger 数据 |
 | scratch 目录 | 通过；worker target 使用 `~/.cryosparc/scratch` |
 | project 目录 | 通过；创建 `~/cryosparc_projects` |
 | master 服务 | 通过；database、cache、api、scheduler、app 均启动 |
@@ -635,10 +635,10 @@ localhost/cryosparc-workstation:test3
 | 无 GPU 运行 | 通过；worker 使用 `--nogpu`，不启用 GPU 资源 |
 | base port | 通过；`61000` 返回 HTTP `200` |
 
-停止后再次启动时不再传入 license 环境变量，`run.sh` 从已保存的 `~/.cryosparc/license_id` 继续启动，master、worker 和 61000 均恢复正常。
+`cryosparc-workstation` 的默认行为是 `init`、`start`、`status`；初始化用户和数据库保存在运行用户的 home 中。停止后再次启动时不再传入 license 环境变量，脚本从已保存的 `~/.cryosparc/license_id` 和数据库继续启动，master、worker 和 61000 均恢复正常。
 
 本 workstation smoke test 验证的是 CryoSPARC 原生 base port 的 HTTP 服务。CryoSPARC 本身不会因为此 Dockerfile 自动变成 TLS；如果平台要求 61000 在容器内必须是 HTTPS，需要另外配置证书和 TLS 终止层，并将 CryoSPARC 原生 HTTP 端口改为内部端口。
 
 ### 12.4 与 GridView 启动链路的关系
 
-当前 GridView/Slurm 启动参数会显式设置 `--entrypoint /bin/sh`，并在运行时执行 `/usr/sbin/sshd -D`。因此直接使用 workstation 镜像默认 `ENTRYPOINT` 时，`run.sh` 会启动；但如果沿用现有 GridView 的 entrypoint 覆盖逻辑，必须把 `/usr/local/bin/cryosparc-workstation` 加入平台的 runtime setup，不能只依赖 Dockerfile 的 `ENTRYPOINT`。
+当前 GridView/Slurm 启动参数会显式设置 `--entrypoint /bin/sh`，并在运行时执行 `/usr/sbin/sshd -D`。因此直接使用 workstation 镜像默认 `ENTRYPOINT` 时，`cryosparc-workstation` 会启动；但如果沿用现有 GridView 的 entrypoint 覆盖逻辑，必须把 `/usr/local/bin/cryosparc-workstation` 加入平台的 runtime setup，不能只依赖 Dockerfile 的 `ENTRYPOINT`。
