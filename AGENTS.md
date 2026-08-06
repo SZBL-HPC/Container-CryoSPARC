@@ -41,6 +41,7 @@ current address.
 - `61003`: command service.
 - `61004`: Redis cache.
 - `61006`: application API.
+- `62000`: GridView-only nginx gzip proxy for cluster forwarding; upstream is CryoSPARC Web `61000`.
 - `22`: container SSH daemon.
 - `6080`: platform gateway under test; the current `ai-forward` route may return `404` when no mapping is deployed.
 

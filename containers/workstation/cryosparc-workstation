@@ -39,6 +39,7 @@ if [[ -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
 fi
 
 BASE_PORT="${requested_base_port:-${runtime_base_port:-${CRYOSPARC_BASE_PORT:-61000}}}"
+NGINX_PORT="${CRYOSPARC_NGINX_PORT:-62000}"
 
 detect_hostname() {
     local hostname_value
@@ -464,6 +465,15 @@ status_command() {
         printf 'Web URL: http://%s:%s/\n' "${ips:-<container-ip>}" "${BASE_PORT}"
     else
         printf 'Listening IP: not listening\n'
+    fi
+
+    if [[ -f /etc/nginx/cryosparc.conf ]]; then
+        printf 'Gzip proxy port: %s\n' "${NGINX_PORT}"
+        if ss -ltnH "sport = :${NGINX_PORT}" 2>/dev/null | grep -q .; then
+            printf 'Gzip proxy URL: http://%s:%s/\n' "${ips:-<container-ip>}" "${NGINX_PORT}"
+        else
+            printf 'Gzip proxy: not listening\n'
+        fi
     fi
 }
 

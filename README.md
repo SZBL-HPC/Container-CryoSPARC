@@ -10,6 +10,7 @@ script for CryoSPARC v5.0.6.
 - No pre-initialized database or user in the final image.
 - Persistent runtime data under `~/.cryosparc`.
 - HTTP Web service on base port `61000`.
+- GridView variant adds a gzip proxy on port `62000` for cluster forwarding.
 - Optional GPU registration at runtime.
 - Rootless Podman support with `--userns=keep-id`.
 
@@ -26,6 +27,9 @@ licensed distribution artifacts and should not be published without approval.
 export CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
 export CRYOSPARC_WORKER_NOGPU=true
 ./build-workstation-podman.sh
+
+# GridView variant with the nginx gzip proxy
+./build-workstation-podman.sh --gridview
 ```
 
 The build license above is only a placeholder. Use a real license through the
@@ -48,6 +52,8 @@ podman run -d \
   -p 61000:61000 \
   localhost/cryosparc-workstation:latest
 ```
+
+Add `-p 62000:62000` when using the GridView variant.
 
 With no command arguments, the entrypoint performs `init`, `start`, and
 `status`, then keeps the container alive independently of the SSH session.
@@ -72,6 +78,7 @@ cryosparc-workstation reset all
 - `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, and username `hpc`. Interactive input can override the init defaults.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
+- GridView cluster forwarding should target port `62000`; it proxies to `61000` and preserves `Content-Encoding: gzip`.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
