@@ -39,8 +39,15 @@ if [[ ! -f "${DOCKERFILE_PATH}" ]]; then
     printf 'Dockerfile not found: %s\n' "${DOCKERFILE_PATH}" >&2
     exit 1
 fi
+
+if [[ -z "${IMAGE_NAME:-}" ]]; then
+    if [[ "${DOCKERFILE_NAME}" == "Dockerfile.GridView" ]]; then
+        IMAGE_NAME='localhost/cryosparc-workstation:gridview'
+    else
+        IMAGE_NAME='localhost/cryosparc-workstation:latest'
+    fi
+fi
 PODMAN_BIN="${PODMAN_BIN:-podman}"
-IMAGE_NAME="${IMAGE_NAME:-localhost/cryosparc-workstation:latest}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.8.2-base-ubuntu24.04}"
 WORKER_NOGPU="${CRYOSPARC_WORKER_NOGPU:-true}"
 
