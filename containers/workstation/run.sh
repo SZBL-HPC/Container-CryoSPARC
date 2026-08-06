@@ -2,6 +2,12 @@
 
 set -Eeuo pipefail
 
+# The platform may inject an unavailable locale such as en_US.UTF-8 into the
+# SSH environment. Redis refuses to start with that locale, so normalize the
+# service environment to the locale guaranteed by glibc.
+export LANG="${CRYOSPARC_LANG:-en_US.UTF-8}"
+export LC_ALL="${CRYOSPARC_LOCALE:-en_US.UTF-8}"
+
 INSTALL_ROOT="${CRYOSPARC_INSTALL_ROOT:-/opt/cryosparc}"
 MASTER_ROOT="${INSTALL_ROOT}/cryosparc_master"
 WORKER_ROOT="${INSTALL_ROOT}/cryosparc_worker"
@@ -128,7 +134,52 @@ if [[ "${CRYOSPARC_START_SSHD:-true}" == "true" ]]; then
     fi
 fi
 
-"${MASTER_ROOT}/bin/cryosparcm" start
+start_master() {
+    local attempt
+
+    for attempt in 1 2 3; do
+        if "${MASTER_ROOT}/bin/cryosparcm" start; then
+            return 0
+        fi
+        printf 'CryoSPARC master is not ready; retrying (%s/3)\n' "${attempt}" >&2
+        sleep 5
+    done
+
+    return 1
+}
+
+start_master
+
+wait_for_api() {
+    local api_port=$((BASE_PORT + 2))
+    local attempt
+
+    for attempt in {1..30}; do
+        if curl --noproxy '*' --fail --silent --show-error --max-time 5 \
+            -H "License-ID: ${LICENSE_ID}" \
+            "http://127.0.0.1:${api_port}/" >/dev/null; then
+            return 0
+        fi
+        sleep 2
+    done
+
+    printf 'CryoSPARC API did not become ready on port %s\n' "${api_port}" >&2
+    return 1
+}
+
+wait_for_api
+
+start_application_services() {
+    local service
+
+    # A failed full start can leave the supervisor and API running while the
+    # remaining application services are still stopped.
+    for service in scheduler command_vis app app_api; do
+        "${MASTER_ROOT}/bin/cryosparcm" start "${service}"
+    done
+}
+
+start_application_services
 
 export CRYOSPARC_CONFIG_DIR="${WORKER_CONFIG_DIR}"
 export CRYOSPARC_LOG_DIR="${WORKER_CONFIG_DIR}/run"

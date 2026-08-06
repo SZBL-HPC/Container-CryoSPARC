@@ -48,8 +48,11 @@ RUN apt-get update \
         passwd \
         procps \
         sudo \
-    && sed -i 's/^# *C.UTF-8 UTF-8/C.UTF-8 UTF-8/' /etc/locale.gen \
-    && locale-gen C.UTF-8 \
+    && sed -i \
+        -e 's/^# *C.UTF-8 UTF-8/C.UTF-8 UTF-8/' \
+        -e 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' \
+        /etc/locale.gen \
+    && locale-gen C.UTF-8 en_US.UTF-8 \
     && mkdir -p /run/sshd /root/.ssh \
     && ssh-keygen -A \
     && sed -i \
@@ -69,7 +72,7 @@ ARG CRYOSPARC_INITIAL_EMAIL=admin@example.org
 ARG CRYOSPARC_INITIAL_USERNAME=admin
 ARG CRYOSPARC_INITIAL_FIRSTNAME=Cryo
 ARG CRYOSPARC_INITIAL_LASTNAME=SPARC
-ARG CRYOSPARC_INITIAL_PASSWORD
+ARG CRYOSPARC_INITIAL_PASSWORD=Passw0rd
 ARG CRYOSPARC_WORKER_NOGPU=true
 
 ENV CRYOSPARC_FORCE_HOSTNAME=true
@@ -129,8 +132,8 @@ RUN cp /build/pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/
 
 FROM runtime-base AS workstation
 
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
     CRYOSPARC_INSTALL_ROOT=/opt/cryosparc \
     CRYOSPARC_BASE_PORT=61000
 

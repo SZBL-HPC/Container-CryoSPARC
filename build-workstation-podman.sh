@@ -13,15 +13,9 @@ if ! command -v "${PODMAN_BIN}" >/dev/null 2>&1; then
     exit 1
 fi
 
-INITIAL_PASSWORD="${CRYOSPARC_INITIAL_PASSWORD:-}"
-if [[ -z "${INITIAL_PASSWORD}" ]]; then
-    if [[ -t 0 ]]; then
-        read -r -s -p 'Initial CryoSPARC admin password: ' INITIAL_PASSWORD
-        printf '\n'
-    else
-        printf 'Set CRYOSPARC_INITIAL_PASSWORD before running this script.\n' >&2
-        exit 1
-    fi
+INITIAL_PASSWORD="${CRYOSPARC_INITIAL_PASSWORD:-Passw0rd}"
+if [[ "${INITIAL_PASSWORD}" == Passw0rd ]]; then
+    printf 'Warning: using the default initial password; set CRYOSPARC_INITIAL_PASSWORD for production.\n' >&2
 fi
 
 BUILD_ARGS=(
