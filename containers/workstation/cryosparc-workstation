@@ -559,21 +559,10 @@ reset_all_command() {
     printf 'all runtime data, user configuration, and license were reset\n'
 }
 
-keep_container_alive() {
-    [[ "$$" -eq 1 ]] || return 0
-
-    trap 'stop_command >/dev/null 2>&1 || true; exit 0' INT TERM
-    while :; do
-        sleep 3600 &
-        wait "$!"
-    done
-}
-
 run_default() {
     init_command
     start_command
     status_command
-    keep_container_alive
 }
 
 if [[ $# -eq 0 ]]; then
@@ -592,7 +581,6 @@ case "${command}" in
     start)
         [[ $# -eq 0 ]] || { printf 'start does not accept arguments.\n' >&2; exit 2; }
         start_command
-        keep_container_alive
         ;;
     status)
         [[ $# -eq 0 ]] || { printf 'status does not accept arguments.\n' >&2; exit 2; }
@@ -605,7 +593,6 @@ case "${command}" in
     restart)
         [[ $# -eq 0 ]] || { printf 'restart does not accept arguments.\n' >&2; exit 2; }
         restart_command
-        keep_container_alive
         ;;
     reset)
         case "${1:-}" in

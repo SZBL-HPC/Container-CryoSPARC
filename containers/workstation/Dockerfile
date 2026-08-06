@@ -8,10 +8,10 @@ FROM ubuntu:24.04 AS package-unpack
 
 WORKDIR /build
 
-COPY pkg/cryosparc_master.tar.gz /build/pkg/cryosparc_master.tar.gz
-COPY pkg/cryosparc_master_patch.tar.gz /build/pkg/cryosparc_master_patch.tar.gz
-COPY pkg/cryosparc_worker.tar.gz /build/pkg/cryosparc_worker.tar.gz
-COPY pkg/cryosparc_worker_patch.tar.gz /build/pkg/cryosparc_worker_patch.tar.gz
+    COPY pkg/cryosparc_master.tar.gz /build/pkg/cryosparc_master.tar.gz
+    COPY pkg/cryosparc_master_patch.tar.gz /build/pkg/cryosparc_master_patch.tar.gz
+    COPY pkg/cryosparc_worker.tar.gz /build/pkg/cryosparc_worker.tar.gz
+    COPY pkg/cryosparc_worker_patch.tar.gz /build/pkg/cryosparc_worker_patch.tar.gz
 
 RUN mkdir -p \
         /opt/cryosparc/cryosparc_master \
@@ -120,9 +120,12 @@ ENV LANG=en_US.UTF-8 \
 
 COPY --from=installer /opt/cryosparc /opt/cryosparc
 COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
+COPY containers/workstation/entrypoint /usr/local/bin/cryosparc-container
 
-RUN chmod 755 /usr/local/bin/cryosparc-workstation
+RUN chmod 755 \
+    /usr/local/bin/cryosparc-workstation \
+    /usr/local/bin/cryosparc-container
 
 EXPOSE 22 61000
 
-ENTRYPOINT ["/usr/local/bin/cryosparc-workstation"]
+ENTRYPOINT ["/usr/local/bin/cryosparc-container"]

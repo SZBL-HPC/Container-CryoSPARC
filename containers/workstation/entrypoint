@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+start_sshd() {
+    [[ "${CRYOSPARC_START_SSHD:-true}" == "true" ]] || return 0
+
+    if [[ "$(id -u)" -eq 0 ]]; then
+        mkdir -p /run/sshd
+        ssh-keygen -A
+        if ! ss -ltnH 'sport = :22' | grep -q .; then
+            /usr/sbin/sshd
+        fi
+    elif ! ss -ltnH 'sport = :22' | grep -q .; then
+        printf 'sshd is not running and the container entrypoint is not running as root\n' >&2
+        exit 1
+    fi
+}
+
+start_sshd
+/usr/local/bin/cryosparc-workstation "$@"
+
+shutdown() {
+    /usr/local/bin/cryosparc-workstation stop >/dev/null 2>&1 || true
+    exit 0
+}
+
+trap shutdown INT TERM
+
+# CryoSPARC services are daemonized by supervisord. Keep only the container
+# entrypoint alive so the container remains available after SSH disconnects.
+while :; do
+    sleep 3600 &
+    wait "$!"
+done

@@ -641,4 +641,4 @@ localhost/cryosparc-workstation:test3
 
 ### 12.4 与 GridView 启动链路的关系
 
-当前 GridView/Slurm 启动参数会显式设置 `--entrypoint /bin/sh`，并在运行时执行 `/usr/sbin/sshd -D`。因此直接使用 workstation 镜像默认 `ENTRYPOINT` 时，`cryosparc-workstation` 会启动；但如果沿用现有 GridView 的 entrypoint 覆盖逻辑，必须把 `/usr/local/bin/cryosparc-workstation` 加入平台的 runtime setup，不能只依赖 Dockerfile 的 `ENTRYPOINT`。
+当前 GridView/Slurm 启动参数会显式设置 `--entrypoint /bin/sh`，并在运行时执行 `/usr/sbin/sshd -D`。因此直接使用 workstation 镜像默认 `ENTRYPOINT` 时，`cryosparc-container` 会启动；但如果沿用现有 GridView 的 entrypoint 覆盖逻辑，必须把 `/usr/local/bin/cryosparc-container` 加入平台的 runtime setup，不能只依赖 Dockerfile 的 `ENTRYPOINT`。
