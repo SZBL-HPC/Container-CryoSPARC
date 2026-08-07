@@ -569,10 +569,30 @@ reset_all_command() {
     printf 'all runtime data, user configuration, and license were reset\n'
 }
 
+warm_web_assets() {
+    local web_root="${CRYOSPARC_WEB_ROOT:-${INSTALL_ROOT}/cryosparc_master/app/custom-server/dist/client}"
+    local asset
+    local asset_count=0
+
+    [[ "${CRYOSPARC_WARM_WEB_ASSETS:-true}" == "true" ]] || return 0
+    if [[ ! -d "${web_root}" ]]; then
+        printf 'Web asset directory not found; skipping warmup: %s\n' "${web_root}" >&2
+        return 0
+    fi
+
+    printf '准备好了，开始预热网页资源...\n'
+    while IFS= read -r -d '' asset; do
+        cat "${asset}" >/dev/null
+        asset_count=$((asset_count + 1))
+    done < <(find "${web_root}" -type f -print0)
+    printf '预热完毕（%s 个文件）\n' "${asset_count}"
+}
+
 run_default() {
     init_command
     start_command
     status_command
+    warm_web_assets
 }
 
 if [[ $# -eq 0 ]]; then
@@ -587,10 +607,12 @@ case "${command}" in
     init)
         [[ $# -eq 0 ]] || { printf 'init does not accept arguments.\n' >&2; exit 2; }
         init_command
+        warm_web_assets
         ;;
     start)
         [[ $# -eq 0 ]] || { printf 'start does not accept arguments.\n' >&2; exit 2; }
         start_command
+        warm_web_assets
         ;;
     status)
         [[ $# -eq 0 ]] || { printf 'status does not accept arguments.\n' >&2; exit 2; }
@@ -603,6 +625,7 @@ case "${command}" in
     restart)
         [[ $# -eq 0 ]] || { printf 'restart does not accept arguments.\n' >&2; exit 2; }
         restart_command
+        warm_web_assets
         ;;
     reset)
         case "${1:-}" in
