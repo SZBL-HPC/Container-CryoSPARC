@@ -18,24 +18,9 @@ start_sshd() {
 }
 
 start_sshd
-
-start_nginx() {
-    [[ -f /etc/nginx/cryosparc.conf ]] || return 0
-    [[ "${CRYOSPARC_START_NGINX:-true}" == "true" ]] || return 0
-
-    /usr/sbin/nginx -t -c /etc/nginx/cryosparc.conf
-    if ! ss -ltnH 'sport = :62000' | grep -q .; then
-        /usr/sbin/nginx -c /etc/nginx/cryosparc.conf
-    fi
-}
-
-start_nginx
 /usr/local/bin/cryosparc-workstation "$@"
 
 shutdown() {
-    if [[ -f /etc/nginx/cryosparc.conf ]]; then
-        /usr/sbin/nginx -c /etc/nginx/cryosparc.conf -s quit >/dev/null 2>&1 || true
-    fi
     /usr/local/bin/cryosparc-workstation stop >/dev/null 2>&1 || true
     exit 0
 }

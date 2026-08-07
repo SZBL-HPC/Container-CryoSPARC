@@ -41,9 +41,8 @@ current address.
 - `61003`: command service.
 - `61004`: Redis cache.
 - `61006`: application API.
-- `62000`: GridView-only nginx gzip proxy for cluster forwarding; upstream is CryoSPARC Web `61000`.
 - `22`: container SSH daemon.
-- `6080`: platform gateway under test; the current `ai-forward` route may return `404` when no mapping is deployed.
+- `6080`: platform HTTP gateway under test. Its `ai-forward` route adds a URL prefix, which breaks CryoSPARC's root-absolute Web asset and API paths; do not use it for workstation HTTP forwarding. Select the platform's socket forwarding port instead.
 
 The expected startup dependency order is database, Redis, API, scheduler and
 application services. `61002` is checked before starting the application
@@ -84,6 +83,7 @@ not create a second user.
 - After a reset test, leave the test container initialized and verify `status` and Web port `61000`.
 - A failed first API check can be a normal startup race if the supervisor remains alive and the API becomes ready shortly afterward.
 - The container uses HTTP on `61000`; HTTPS requires a separate TLS termination layer.
+- GridView HTTP forwarding is not usable through the prefixed `ai-forward` route; use socket forwarding for the workstation port.
 
 ## Public Repository Rules
 

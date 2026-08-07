@@ -581,7 +581,7 @@ import log 显示 GridView 构建过程新增了这些内容：
 新增文件：
 
 ```text
-containers/workstation/Dockerfile.GridView
+containers/workstation/Dockerfile
 containers/workstation/cryosparc-workstation
 ```
 
