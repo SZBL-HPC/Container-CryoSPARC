@@ -76,7 +76,7 @@ cryosparc-workstation reset all
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
 - `reset all` removes all runtime data, user configuration, and the saved license.
-- `init`, `start`, and `restart` asynchronously warm the entire master installation directory to reduce mechanical-disk startup latency. Set `CRYOSPARC_WARM_MASTER_FILES=false` to disable this behavior.
+- `init`, `start`, and `restart` asynchronously scan the entire master installation directory and warm files readable by the runtime user to reduce mechanical-disk startup latency. Unreadable files are skipped and counted. Set `CRYOSPARC_WARM_MASTER_FILES=false` to disable this behavior.
 
 Destructive reset commands require a terminal confirmation. For automation,
 set `CRYOSPARC_ASSUME_YES=true`.
