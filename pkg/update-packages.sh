@@ -133,16 +133,37 @@ json_field() {
         | sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"
 }
 
-PATCH_JSON="$(curl --fail --silent --show-error --location --retry 3 --retry-delay 2 --get \
+PATCH_JSON=''
+PATCH_ID=''
+PATCH_NAME=''
+PATCH_VERSION=''
+PATCH_RESPONSE="${TMP_DIR}/patch-check.$$.json"
+TEMP_FILES+=("${PATCH_RESPONSE}")
+PATCH_HTTP_STATUS="$(curl --silent --show-error --location --retry 3 --retry-delay 2 --get \
     --data-urlencode "license_id=${LICENSE_ID}" \
-    "${BASE_URL}/patch_check/${VERSION}")"
-PATCH_ID="$(json_field id "${PATCH_JSON}")"
-PATCH_NAME="$(json_field name "${PATCH_JSON}")"
-PATCH_VERSION="$(json_field applies_to_release "${PATCH_JSON}")"
+    --output "${PATCH_RESPONSE}" \
+    --write-out '%{http_code}' \
+    "${BASE_URL}/patch_check/${VERSION}" || true)"
 
-[[ -n "${PATCH_ID}" ]] || die 'patch response did not contain id'
-[[ -n "${PATCH_NAME}" ]] || die 'patch response did not contain name'
-[[ "${PATCH_VERSION}" == "${VERSION}" ]] || die "patch applies to ${PATCH_VERSION}, not ${VERSION}"
+case "${PATCH_HTTP_STATUS}" in
+    200)
+        PATCH_JSON="$(<"${PATCH_RESPONSE}")"
+        PATCH_ID="$(json_field id "${PATCH_JSON}")"
+        PATCH_NAME="$(json_field name "${PATCH_JSON}")"
+        PATCH_VERSION="$(json_field applies_to_release "${PATCH_JSON}")"
+
+        [[ -n "${PATCH_ID}" ]] || die 'patch response did not contain id'
+        [[ -n "${PATCH_NAME}" ]] || die 'patch response did not contain name'
+        [[ "${PATCH_VERSION}" == "${VERSION}" ]] \
+            || die "patch applies to ${PATCH_VERSION}, not ${VERSION}"
+        ;;
+    404)
+        printf 'No patch available for %s; continuing with package downloads.\n' "${VERSION}"
+        ;;
+    *)
+        die "patch check failed (HTTP ${PATCH_HTTP_STATUS}) for ${BASE_URL}/patch_check/${VERSION}"
+        ;;
+esac
 
 last_header_value() {
     local header="$1"
@@ -269,16 +290,18 @@ sync_archive \
     "${BASE_URL}/download/worker-${VERSION}/${LICENSE_ID}" \
     "${VERSION}"
 
-sync_archive \
-    master patch \
-    "${PKG_DIR}/cryosparc_master_patch.tar.gz" \
-    "${BASE_URL}/patch_get/${PATCH_ID}/master" \
-    "${VERSION}" \
-    "${PATCH_NAME}"
+if [[ -n "${PATCH_ID}" ]]; then
+    sync_archive \
+        master patch \
+        "${PKG_DIR}/cryosparc_master_patch.tar.gz" \
+        "${BASE_URL}/patch_get/${PATCH_ID}/master" \
+        "${VERSION}" \
+        "${PATCH_NAME}"
 
-sync_archive \
-    worker patch \
-    "${PKG_DIR}/cryosparc_worker_patch.tar.gz" \
-    "${BASE_URL}/patch_get/${PATCH_ID}/worker" \
-    "${VERSION}" \
-    "${PATCH_NAME}"
+    sync_archive \
+        worker patch \
+        "${PKG_DIR}/cryosparc_worker_patch.tar.gz" \
+        "${BASE_URL}/patch_get/${PATCH_ID}/worker" \
+        "${VERSION}" \
+        "${PATCH_NAME}"
+fi
