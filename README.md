@@ -69,19 +69,21 @@ cryosparc-workstation reset data
 cryosparc-workstation reset all
 ```
 
-- `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default; press Enter to accept it, or type a new value to override it.
+- `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default in an editable input buffer; press Enter to accept it, or edit it with readline before submitting.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
 - `reset all` removes all runtime data, user configuration, and the saved license.
+- `init`, `start`, and `restart` asynchronously warm the entire master installation directory to reduce mechanical-disk startup latency. Set `CRYOSPARC_WARM_MASTER_FILES=false` to disable this behavior.
 
 Destructive reset commands require a terminal confirmation. For automation,
 set `CRYOSPARC_ASSUME_YES=true`.
 
-Successful `init` and `reset user` commands print the email, username, name,
-and password. This is intentional for the demo workflow; do not use the demo
+Successful `init` and `reset user` commands print the email, username, first
+name, last name, and password. Successful `init` also prints a final login
+summary containing the email and password. This is intentional for the demo workflow; do not use the demo
 passwords in production.
 
 ## SSH

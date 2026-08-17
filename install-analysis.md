@@ -392,18 +392,20 @@ bin/cryosparcw connect \
 
 ### 6.4 workstation 的特殊点
 
-standalone 外层脚本最后固定执行：
+原始 standalone 外层脚本最后固定执行：
 
 ```bash
 bin/cryosparcw connect --worker "$MASTER_HOSTNAME" \
   --master "$MASTER_HOSTNAME" --port "$BASE_PORT" ...
 ```
 
-它没有把 `--no-gpu` 传进去。因此：
+但当前仓库的 `containers/workstation/cryosparc-workstation` wrapper 会在
+`CRYOSPARC_NOGPU=true`、`nvidia-smi` 不存在或 GPU 查询失败时自动追加
+`--no-gpu`。因此：
 
 - GPU workstation：直接使用默认自动连接。
-- CPU-only workstation：worker 安装可加 `--nogpu`，但自动连接仍会尝试 GPU 检测。
-- CPU-only workstation 需要手工执行带 `--no-gpu` 的 connect，或在自定义镜像脚本中修改自动 connect 命令。
+- CPU-only workstation：自动连接使用 `--no-gpu`，不会登记为 GPU worker。
+- 如果绕过 wrapper 直接执行 `cryosparcw connect`，仍应显式传入 `--no-gpu`。
 
 跳过 GPU 后，该 worker 不会被登记为 GPU worker，GPU 计算任务不能调度到它。
 
@@ -524,7 +526,7 @@ master 安装器会用 `getent hosts <hostname>` 验证 `--hostname`。容器内
 
 ### 8.4 GPU 容器边界
 
-NVIDIA driver 不应在普通 Docker 镜像内安装，driver 来自宿主机和 NVIDIA Container Toolkit。需要 GPU 的 workstation 容器运行时提供 `--gpus all`；CPU-only 镜像则使用手工 `cryosparcw connect --no-gpu`，不能依赖 standalone 自动 connect。
+NVIDIA driver 不应在普通 Docker 镜像内安装，driver 来自宿主机和 NVIDIA Container Toolkit。需要 GPU 的 workstation 容器运行时提供 `--gpus all`；当前仓库的 workstation wrapper 会为 CPU-only 环境自动执行带 `--no-gpu` 的 connect，绕过 wrapper 时才需要手工传入该参数。
 
 ### 8.5 容器进程问题
 
