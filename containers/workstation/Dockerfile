@@ -8,10 +8,7 @@ FROM ubuntu:24.04 AS package-unpack
 
 WORKDIR /build
 
-    COPY pkg/cryosparc_master.tar.gz /build/pkg/cryosparc_master.tar.gz
-    COPY pkg/cryosparc_master_patch.tar.gz /build/pkg/cryosparc_master_patch.tar.gz
-    COPY pkg/cryosparc_worker.tar.gz /build/pkg/cryosparc_worker.tar.gz
-    COPY pkg/cryosparc_worker_patch.tar.gz /build/pkg/cryosparc_worker_patch.tar.gz
+    COPY pkg /build/pkg
 
 RUN mkdir -p \
         /opt/cryosparc/cryosparc_master \
@@ -92,14 +89,22 @@ RUN worker_args=() \
         --yes \
         "${worker_args[@]}"
 
-RUN cp /build/pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/ \
-    && cp /build/pkg/cryosparc_worker_patch.tar.gz /opt/cryosparc/cryosparc_worker/ \
+RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
+        cp /build/pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/; \
+    fi \
+    && if [[ -f /build/pkg/cryosparc_worker_patch.tar.gz ]]; then \
+        cp /build/pkg/cryosparc_worker_patch.tar.gz /opt/cryosparc/cryosparc_worker/; \
+    fi \
     && export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm start \
-    && ./bin/cryosparcm patch --install --yes \
-    && cd /opt/cryosparc/cryosparc_worker \
-    && ./bin/cryosparcw patch \
+    && if [[ -f /opt/cryosparc/cryosparc_master/cryosparc_master_patch.tar.gz ]]; then \
+        ./bin/cryosparcm patch --install --yes; \
+    fi \
+    && if [[ -f /opt/cryosparc/cryosparc_worker/cryosparc_worker_patch.tar.gz ]]; then \
+        cd /opt/cryosparc/cryosparc_worker \
+        && ./bin/cryosparcw patch; \
+    fi \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm stop \
     && rm -f \

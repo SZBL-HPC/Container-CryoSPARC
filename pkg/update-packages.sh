@@ -304,4 +304,9 @@ if [[ -n "${PATCH_ID}" ]]; then
         "${BASE_URL}/patch_get/${PATCH_ID}/worker" \
         "${VERSION}" \
         "${PATCH_NAME}"
+else
+    rm -f \
+        "${PKG_DIR}/cryosparc_master_patch.tar.gz" \
+        "${PKG_DIR}/cryosparc_worker_patch.tar.gz"
+    printf 'Removed stale patch packages for %s.\n' "${VERSION}"
 fi
