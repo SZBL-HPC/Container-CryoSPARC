@@ -71,7 +71,7 @@ The default first-user values are:
 - Email: `hpc@szbl.ac.cn`
 - Username: `hpc`
 - Name: `Cryo Sparc`
-- Password: `Passw0rd`
+- Password: `SZBL2026`
 
 `reset user` always overwrites only the first user with these values. It does
 not create a second user.
@@ -90,4 +90,4 @@ not create a second user.
 - Never commit a real CryoSPARC license UUID.
 - Use `CRYOSPARC_LICENSE_ID` from the environment or a zero UUID placeholder in examples.
 - Do not commit private SSH keys, `known_hosts`, local SSH config secrets, or copied package artifacts unless their distribution is explicitly approved.
-- `Passw0rd` and `theRootPw2021` are demo-only credentials permitted in these documents; they must not be treated as production secrets.
+- `SZBL2026` and `theRootPw2021` are demo-only credentials permitted in these documents; they must not be treated as production secrets.

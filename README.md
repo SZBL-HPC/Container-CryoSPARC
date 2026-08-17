@@ -69,7 +69,7 @@ cryosparc-workstation reset data
 cryosparc-workstation reset all
 ```
 
-- `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, and username `hpc`. Interactive input can override the init defaults.
+- `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default; press Enter to accept it, or type a new value to override it.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.

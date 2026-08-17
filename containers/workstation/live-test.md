@@ -17,11 +17,11 @@ CryoSPARC 前端不会把明文密码直接发送到 `/api/auth/login`。它会�
 默认账号：
 
 - Email：`hpc@szbl.ac.cn`
-- Password：`Passw0rd`
+- Password：`SZBL2026`
 
 ```bash
 COOKIE_FILE="${TMPDIR:-/tmp}/cryosparc-cookies.txt"
-PASSWORD_HASH="$(printf '%s' 'Passw0rd' | shasum -a 256 | cut -d' ' -f1)"
+PASSWORD_HASH="$(printf '%s' 'SZBL2026' | shasum -a 256 | cut -d' ' -f1)"
 
 curl --noproxy '*' -sS \
   -c "$COOKIE_FILE" \
@@ -87,6 +87,6 @@ ssh -p 40002 xshu@10.68.247.45 \
 ## Conclusions
 
 - Web 服务和网络路径没有明显性能问题；外部约 `20-30ms`，容器内部约 `1ms`。
-- 默认登录必须发送 SHA-256 后的密码；直接发送 `Passw0rd` 会得到 `Incorrect password`。
+- 默认登录必须发送 SHA-256 后的密码；直接发送 `SZBL2026` 会得到 `Incorrect password`。
 - 协议内容接口和静态 logo 文件都正常，问题不是文件缺失或服务未启动。
 - 日志中曾出现 logo 首次请求被浏览器取消：`GET /CryoSPARC-logo-small@2x.png - -`，随后重新请求返回 `200`。手动打开图片后刷新页面能够显示，说明浏览器缓存命中了该资源；现象更接近首次请求取消或浏览器缓存/渲染问题。

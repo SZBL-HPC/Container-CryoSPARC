@@ -25,13 +25,19 @@ WORKER_CONFIG_DIR="${CRYOSPARC_HOME}/worker"
 requested_license="${CRYOSPARC_LICENSE_ID:-}"
 requested_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
 requested_base_port="${CRYOSPARC_BASE_PORT:-}"
+test_mode=false
+if [[ "${1:-}" == 'test' ]]; then
+    test_mode=true
+fi
 
-source "${MASTER_ROOT}/config.sh"
+if [[ "${test_mode}" != true ]]; then
+    source "${MASTER_ROOT}/config.sh"
+fi
 
 runtime_hostname=""
 runtime_base_port=""
 runtime_license=""
-if [[ -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
+if [[ "${test_mode}" != true && -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
     source "${MASTER_CONFIG_DIR}/config.sh"
     runtime_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
     runtime_base_port="${CRYOSPARC_BASE_PORT:-}"
@@ -62,7 +68,9 @@ export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
 export CRYOSPARC_FORCE_USER=true
 export CRYOSPARC_FORCE_HOSTNAME=true
 
-mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+if [[ "${test_mode}" != true ]]; then
+    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+fi
 
 set_config_value() {
     local config_file="$1"
@@ -270,14 +278,28 @@ start_core_services() {
     wait_for_web
 }
 
+start_prompt_terminal_state() {
+    printf '\033]12;green\007'
+    printf '\033[2 q'
+}
+
+restore_prompt_terminal_state() {
+    printf '\033]12;default\007'
+    printf '\033[0 q'
+    printf '\033[0m'
+}
+
 prompt_value() {
     local variable_name="$1"
     local label="$2"
     local default_value="$3"
     local value=""
+    local prompt=""
 
     if [[ -t 0 ]]; then
-        read -r -p "${label} [${default_value}]: " value || true
+        printf -v prompt '\001\033[1m\002%s:\001\033[0m\002\001\033[32m\002 ' "${label}"
+        read -r -e -i "${default_value}" -p "${prompt}" value || true
+        printf '\033[0m'
         value="${value:-${default_value}}"
     else
         value="${default_value}"
@@ -290,13 +312,16 @@ prompt_password() {
     local default_value="$2"
     local value=""
     local confirmation=""
+    local prompt=""
 
     if [[ -t 0 ]]; then
-        read -r -s -p "Password [default]: " value || true
-        printf '\n'
+        printf -v prompt '\001\033[1m\002Password:\001\033[0m\002\001\033[32m\002 '
+        read -r -e -i "${default_value}" -p "${prompt}" value || true
+        printf '\033[0m'
         value="${value:-${default_value}}"
-        read -r -s -p 'Confirm password: ' confirmation || true
-        printf '\n'
+        printf -v prompt '\001\033[1m\002Confirm password:\001\033[0m\002\001\033[32m\002 '
+        read -r -e -i "${default_value}" -p "${prompt}" confirmation || true
+        printf '\033[0m'
         confirmation="${confirmation:-${default_value}}"
         if [[ "${value}" != "${confirmation}" ]]; then
             printf 'Passwords do not match.\n' >&2
@@ -329,11 +354,35 @@ username_from_email() {
 collect_user_values() {
     local default_email="${1:-${CRYOSPARC_INITIAL_EMAIL:-hpc@szbl.ac.cn}}"
     local default_name="${2:-${CRYOSPARC_INITIAL_NAME:-Cryo Sparc}}"
-    local default_password="${3:-${CRYOSPARC_INITIAL_PASSWORD:-Passw0rd}}"
+    local default_password="${3:-${CRYOSPARC_INITIAL_PASSWORD:-SZBL2026}}"
+    local interactive=false
 
-    prompt_value INITIAL_EMAIL 'Email' "${default_email}"
-    prompt_value INITIAL_NAME 'Name' "${default_name}"
-    prompt_password INITIAL_PASSWORD "${default_password}"
+    if [[ -t 0 ]]; then
+        interactive=true
+        start_prompt_terminal_state
+    fi
+
+    if ! prompt_value INITIAL_EMAIL 'Email' "${default_email}"; then
+        if [[ "${interactive}" == true ]]; then
+            restore_prompt_terminal_state
+        fi
+        return 1
+    fi
+    if ! prompt_value INITIAL_NAME 'Name' "${default_name}"; then
+        if [[ "${interactive}" == true ]]; then
+            restore_prompt_terminal_state
+        fi
+        return 1
+    fi
+    if ! prompt_password INITIAL_PASSWORD "${default_password}"; then
+        if [[ "${interactive}" == true ]]; then
+            restore_prompt_terminal_state
+        fi
+        return 1
+    fi
+    if [[ "${interactive}" == true ]]; then
+        restore_prompt_terminal_state
+    fi
     split_name "${INITIAL_NAME}"
     INITIAL_USERNAME="${CRYOSPARC_INITIAL_USERNAME:-$(username_from_email "${INITIAL_EMAIL}")}"
 }
@@ -343,7 +392,7 @@ set_default_user_values() {
     INITIAL_USERNAME='hpc'
     INITIAL_FIRSTNAME='Cryo'
     INITIAL_LASTNAME='Sparc'
-    INITIAL_PASSWORD='Passw0rd'
+    INITIAL_PASSWORD='SZBL2026'
 }
 
 create_initial_user() {
@@ -360,11 +409,18 @@ create_initial_user() {
 }
 
 print_user_info() {
-    printf 'User information:\n'
+    printf '\nUser information:\n'
     printf '  Email: %s\n' "${INITIAL_EMAIL}"
     printf '  Username: %s\n' "${INITIAL_USERNAME}"
-    printf '  Name: %s %s\n' "${INITIAL_FIRSTNAME}" "${INITIAL_LASTNAME}"
+    printf '  First Name: %s\n' "${INITIAL_FIRSTNAME}"
+    printf '  Last Name: %s\n' "${INITIAL_LASTNAME}"
     printf '  Password: %s\n' "${INITIAL_PASSWORD}"
+}
+
+test_command() {
+    printf 'test mode: no services, data, or license configuration will be changed\n'
+    collect_user_values
+    print_user_info
 }
 
 run_master_python() {
@@ -637,6 +693,10 @@ case "${command}" in
                 exit 2
                 ;;
         esac
+        ;;
+    test)
+        [[ $# -eq 0 ]] || { printf 'test does not accept arguments.\n' >&2; exit 2; }
+        test_command
         ;;
     *)
         printf 'Usage: %s [init|start|status|stop|restart|reset {user|data|all}]\n' "$0" >&2
