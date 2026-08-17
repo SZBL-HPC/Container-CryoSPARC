@@ -253,7 +253,7 @@ connect_worker() {
     if [[ "${CRYOSPARC_NOGPU:-false}" == "true" ]] \
         || ! command -v nvidia-smi >/dev/null 2>&1 \
         || ! nvidia-smi -L >/dev/null 2>&1; then
-        gpu_args+=(--nogpu)
+        gpu_args+=(--no-gpu)
     fi
 
     "${WORKER_ROOT}/bin/cryosparcw" connect \
@@ -417,6 +417,12 @@ print_user_info() {
     printf '  Password: %s\n' "${INITIAL_PASSWORD}"
 }
 
+print_login_info() {
+    printf 'Login information:\n'
+    printf '  Email: %s\n' "${INITIAL_EMAIL}"
+    printf '  Password: %s\n' "${INITIAL_PASSWORD}"
+}
+
 test_command() {
     printf 'test mode: no services, data, or license configuration will be changed\n'
     collect_user_values
@@ -447,12 +453,15 @@ init_command() {
     fi
 
     collect_user_values
+    load_license
+    print_user_info
+    printf 'Please wait ...\n'
     start_core_services
     create_initial_user
     touch "${INIT_MARKER}"
     connect_worker
     printf 'initialized\n'
-    print_user_info
+    print_login_info
 }
 
 start_command() {
@@ -616,30 +625,33 @@ reset_all_command() {
     printf 'all runtime data, user configuration, and license were reset\n'
 }
 
-warm_web_assets() {
-    local web_root="${CRYOSPARC_WEB_ROOT:-${INSTALL_ROOT}/cryosparc_master/app/custom-server/dist/client}"
-    local asset
-    local asset_count=0
+warm_master_files() {
+    local warm_root="${CRYOSPARC_WARM_ROOT:-${MASTER_ROOT}}"
 
-    [[ "${CRYOSPARC_WARM_WEB_ASSETS:-true}" == "true" ]] || return 0
-    if [[ ! -d "${web_root}" ]]; then
-        printf 'Web asset directory not found; skipping warmup: %s\n' "${web_root}" >&2
+    [[ "${CRYOSPARC_WARM_MASTER_FILES:-true}" == "true" ]] || return 0
+    if [[ ! -d "${warm_root}" ]]; then
+        printf 'Master directory not found; skipping background warmup: %s\n' "${warm_root}" >&2
         return 0
     fi
 
-    printf '准备好了，开始预热网页资源...\n'
-    while IFS= read -r -d '' asset; do
-        cat "${asset}" >/dev/null
-        asset_count=$((asset_count + 1))
-    done < <(find "${web_root}" -type f -print0)
-    printf '预热完毕（%s 个文件）\n' "${asset_count}"
+    printf '开始后台预热 master 文件：%s\n' "${warm_root}"
+    (
+        local asset
+        local asset_count=0
+
+        while IFS= read -r -d '' asset; do
+            cat "${asset}" >/dev/null
+            asset_count=$((asset_count + 1))
+        done < <(find "${warm_root}" -type f -print0)
+        printf '后台预热完毕（%s 个文件）\n' "${asset_count}"
+    ) &
 }
 
 run_default() {
     init_command
     start_command
     status_command
-    warm_web_assets
+    warm_master_files
 }
 
 if [[ $# -eq 0 ]]; then
@@ -654,12 +666,12 @@ case "${command}" in
     init)
         [[ $# -eq 0 ]] || { printf 'init does not accept arguments.\n' >&2; exit 2; }
         init_command
-        warm_web_assets
+        warm_master_files
         ;;
     start)
         [[ $# -eq 0 ]] || { printf 'start does not accept arguments.\n' >&2; exit 2; }
         start_command
-        warm_web_assets
+        warm_master_files
         ;;
     status)
         [[ $# -eq 0 ]] || { printf 'status does not accept arguments.\n' >&2; exit 2; }
@@ -672,7 +684,7 @@ case "${command}" in
     restart)
         [[ $# -eq 0 ]] || { printf 'restart does not accept arguments.\n' >&2; exit 2; }
         restart_command
-        warm_web_assets
+        warm_master_files
         ;;
     reset)
         case "${1:-}" in
