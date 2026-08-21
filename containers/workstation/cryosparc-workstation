@@ -15,7 +15,8 @@ WORKER_ROOT="${INSTALL_ROOT}/cryosparc_worker"
 
 CRYOSPARC_HOME="${CRYOSPARC_HOME:-${HOME}/.cryosparc}"
 DB_PATH="${CRYOSPARC_HOME}/cryosparc_database"
-SCRATCH_PATH="${CRYOSPARC_HOME}/scratch"
+SCRATCH_PATH="${CRYOSPARC_SCRATCH_PATH:-/ssd}"
+SSD_RESERVE="${CRYOSPARC_SSD_RESERVE:-768}"
 PROJECTS_PATH="${HOME}/cryosparc_projects"
 LICENSE_FILE="${CRYOSPARC_HOME}/license_id"
 INIT_MARKER="${CRYOSPARC_HOME}/.initialized"
@@ -263,6 +264,7 @@ connect_worker() {
         --worker "${WORKER_NAME}" \
         --sshstr "${SSH_STRING}" \
         --ssdpath "${SCRATCH_PATH}" \
+        --ssdreserve "${SSD_RESERVE}" \
         "${gpu_args[@]}"
 
     export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"

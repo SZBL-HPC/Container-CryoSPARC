@@ -628,10 +628,10 @@ localhost/cryosparc-workstation:test3
 | 首次 license 配置 | 通过；本次 smoke test 用环境变量模拟输入，license 保存到 `~/.cryosparc/license_id`；TTY 交互由 `cryosparc-workstation` 通过默认入口提供 |
 | license 文件权限 | `600`，由运行用户拥有 |
 | 首次 init 数据库 | 通过；运行时在 `~/.cryosparc/cryosparc_database` 初始化 WiredTiger 数据 |
-| scratch 目录 | 通过；worker target 使用 `~/.cryosparc/scratch` |
+| scratch 目录 | 通过；worker target 默认使用 `/ssd`，可由 `CRYOSPARC_SCRATCH_PATH` 覆盖 |
 | project 目录 | 通过；创建 `~/cryosparc_projects` |
 | master 服务 | 通过；database、cache、api、scheduler、app 均启动 |
-| worker 注册 | 通过；本机 worker 注册到 `localhost:61000` |
+| worker 注册 | 通过；本机 worker 注册到 `localhost:61000`，SSD 预留默认 `768 MB`，可由 `CRYOSPARC_SSD_RESERVE` 覆盖 |
 | 无 GPU 运行 | 通过；worker 使用 `--no-gpu`，不启用 GPU 资源 |
 | base port | 通过；`61000` 返回 HTTP `200` |
 

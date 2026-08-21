@@ -31,6 +31,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
+        aria2 \
         curl \
         iproute2 \
         libglib2.0-0 \
@@ -126,6 +127,16 @@ ENV LANG=en_US.UTF-8 \
 COPY --from=installer /opt/cryosparc /opt/cryosparc
 COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
 COPY containers/workstation/entrypoint /usr/local/bin/cryosparc-container
+COPY containers/workstation/cryosparcm /usr/local/bin/cryosparcm
+COPY containers/workstation/cryosparcw /usr/local/bin/cryosparcw
+COPY containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-download-data
+
+RUN chmod -R a+rwX /opt/cryosparc \
+    && mkdir -p /ssd \
+    && chmod 777 /ssd \
+    && chmod 755 /usr/local/bin/cryosparcm \
+        /usr/local/bin/cryosparcw \
+        /usr/local/bin/cryosparc-download-data
 
 RUN chmod 755 \
     /usr/local/bin/cryosparc-workstation \

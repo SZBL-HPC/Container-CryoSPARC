@@ -46,6 +46,30 @@ PUT /api/cmd/users/%25CURRENT_USER%25/state/licenseAccepted
 
 `/api/utility/agreement` 不是当前版本的协议接口；正确接口是 `/api/utility/license`。
 
+## Test Data Downloads
+
+`cryosparcm downloadtest` uses the following public object URLs through the
+default `https://s3.wasabisys.com/` endpoint:
+
+| Dataset | Command | Download URL |
+| --- | --- | --- |
+| New demo default | `cryosparcm downloadtest --dataset 10025` | `https://s3.wasabisys.com/cryosparc-test-data-dist/empiar_10025_subset_v1.tar` |
+| EMPIAR-10305 | `cryosparcm downloadtest --dataset 10305` | `https://s3.wasabisys.com/cryosparc-test-data-dist/empiar_10305.tar.gz` |
+| Performance benchmark | `cryosparcm downloadtest --dataset PERFORMANCE_BENCHMARK_DATA` | `https://s3.wasabisys.com/cryosparc-performance-benchmark-data/performance_benchmark_data_v1.tar.gz` |
+
+新版 demo 使用 `empiar_10025_subset_v1.tar`。性能 benchmark job 代码另有一个
+区域 endpoint：
+`https://s3.us-east-1.wasabisys.com/cryosparc-performance-benchmark-data/performance_benchmark_data_v1.tar.gz`；这不是 `downloadtest` 命令使用的 URL。
+
+镜像内也提供基于 `aria2c` 的下载脚本，dataset 参数与
+`cryosparcm downloadtest` 相同：
+
+```bash
+cryosparc-download-data --dataset 10025
+cryosparc-download-data --dataset 10305
+cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
+```
+
 ## Speed Test
 
 必须使用 `--noproxy '*'`，否则可能受到本机代理环境影响。

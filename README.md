@@ -8,10 +8,12 @@ script for CryoSPARC v5.0.6.
 - CryoSPARC master and worker in one container.
 - Embedded MongoDB runtime managed by CryoSPARC.
 - No pre-initialized database or user in the final image.
-- Persistent runtime data under `~/.cryosparc`.
+- Persistent runtime state under `~/.cryosparc`; worker scratch defaults to `/ssd`.
 - HTTP Web service on base port `61000`.
 - Optional GPU registration at runtime.
 - Rootless Podman support with `--userns=keep-id`.
+- `cryosparcm` and `cryosparcw` are available in `/usr/local/bin`.
+- The master and worker trees are writable by the runtime user for in-container upgrades; `/ssd` is a `777` mount point for optional SSD storage.
 
 The final image still contains the CryoSPARC MongoDB executable. The runtime
 database is created by `init`; removing the database software would prevent the
@@ -57,6 +59,8 @@ With no command arguments, the entrypoint performs `init`, `start`, and
 The management command is `/usr/local/bin/cryosparc-workstation`. The container
 entrypoint is `/usr/local/bin/cryosparc-container`; it starts `sshd` as a daemon,
 keeps only the container alive, and leaves CryoSPARC services under supervisord.
+The image also provides `/usr/local/bin/cryosparc-download-data`, backed by
+`aria2c`.
 
 ```bash
 cryosparc-workstation init
@@ -67,12 +71,15 @@ cryosparc-workstation restart
 cryosparc-workstation reset user
 cryosparc-workstation reset data
 cryosparc-workstation reset all
+cryosparc-download-data --dataset 10025
+cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 ```
 
 - `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default in an editable input buffer; press Enter to accept it, or edit it with readline before submitting.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
+- Automatic worker registration uses `--ssdpath /ssd --ssdreserve 768` (MB). Set `CRYOSPARC_SCRATCH_PATH` to override the scratch path and `CRYOSPARC_SSD_RESERVE` to override the SSD reservation.
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
 - `reset all` removes all runtime data, user configuration, and the saved license.

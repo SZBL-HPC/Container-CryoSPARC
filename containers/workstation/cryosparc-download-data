@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: cryosparc-download-data [--dataset DATASET] [--output-dir DIRECTORY]
+
+DATASET must be one of:
+  10025                       empiar_10025_subset_v1.tar
+  10305                       empiar_10305.tar.gz
+  PERFORMANCE_BENCHMARK_DATA performance_benchmark_data_v1.tar.gz
+
+The default dataset is 10025 and the default output directory is the current
+directory. Downloads use aria2 with resume and 10 connections.
+EOF
+}
+
+dataset='10025'
+output_dir='.'
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dataset)
+            [[ $# -ge 2 ]] || { printf '%s requires a value.\n' "$1" >&2; exit 2; }
+            dataset="$2"
+            shift 2
+            ;;
+        --output-dir)
+            [[ $# -ge 2 ]] || { printf '%s requires a value.\n' "$1" >&2; exit 2; }
+            output_dir="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'Unknown argument: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+case "${dataset}" in
+    10025)
+        filename='empiar_10025_subset_v1.tar'
+        url='https://s3.wasabisys.com/cryosparc-test-data-dist/empiar_10025_subset_v1.tar'
+        ;;
+    10305)
+        filename='empiar_10305.tar.gz'
+        url='https://s3.wasabisys.com/cryosparc-test-data-dist/empiar_10305.tar.gz'
+        ;;
+    PERFORMANCE_BENCHMARK_DATA)
+        filename='performance_benchmark_data_v1.tar.gz'
+        url='https://s3.wasabisys.com/cryosparc-performance-benchmark-data/performance_benchmark_data_v1.tar.gz'
+        ;;
+    *)
+        printf 'Unknown dataset "%s".\n' "${dataset}" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+mkdir -p "${output_dir}"
+printf 'Downloading %s to %s\n' "${filename}" "${output_dir}"
+aria2c -c -V -s10 -x10 -k1M \
+    --dir="${output_dir}" \
+    --out="${filename}" \
+    "${url}"
