@@ -130,13 +130,21 @@ COPY containers/workstation/entrypoint /usr/local/bin/cryosparc-container
 COPY containers/workstation/cryosparcm /usr/local/bin/cryosparcm
 COPY containers/workstation/cryosparcw /usr/local/bin/cryosparcw
 COPY containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-download-data
+COPY containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
-RUN chmod -R a+rwX /opt/cryosparc \
+RUN if ! grep -Eq '^12\.12\.4\.3[[:space:]]+login03([[:space:]]+login03\.szbl\.hpc)?[[:space:]]+etcd_node[[:space:]]*$' /etc/hosts; then \
+        printf '%s\n' '12.12.4.3 login03 login03.szbl.hpc etcd_node' >> /etc/hosts; \
+    fi \
+    && chmod -R a+rwX /opt/cryosparc \
     && mkdir -p /ssd \
     && chmod 777 /ssd \
     && chmod 755 /usr/local/bin/cryosparcm \
         /usr/local/bin/cryosparcw \
-        /usr/local/bin/cryosparc-download-data
+        /usr/local/bin/cryosparc-download-data \
+    && chmod 644 \
+        /opt/cryosparc/cryosparc_master/bin/cluster_info.json \
+        /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
 RUN chmod 755 \
     /usr/local/bin/cryosparc-workstation \

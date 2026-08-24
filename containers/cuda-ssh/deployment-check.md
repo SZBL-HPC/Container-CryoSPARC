@@ -632,6 +632,8 @@ localhost/cryosparc-workstation:test3
 | project 目录 | 通过；创建 `~/cryosparc_projects` |
 | master 服务 | 通过；database、cache、api、scheduler、app 均启动 |
 | worker 注册 | 通过；本机 worker 注册到 `localhost:61000`，SSD 预留默认 `768 MB`，可由 `CRYOSPARC_SSD_RESERVE` 覆盖 |
+| Slurm cluster 注册 | 默认连接 `szbl-cluster`，与本机 Docker worker 同时作为独立 scheduler target 列出；可由 `CRYOSPARC_CLUSTER_ENABLED=false` 禁用 |
+| cluster hosts | 镜像构建时添加 `12.12.4.3 login03 login03.szbl.hpc etcd_node` 到 `/etc/hosts` |
 | 无 GPU 运行 | 通过；worker 使用 `--no-gpu`，不启用 GPU 资源 |
 | base port | 通过；`61000` 返回 HTTP `200` |
 

@@ -14,6 +14,7 @@ script for CryoSPARC v5.0.6.
 - Rootless Podman support with `--userns=keep-id`.
 - `cryosparcm` and `cryosparcw` are available in `/usr/local/bin`.
 - The master and worker trees are writable by the runtime user for in-container upgrades; `/ssd` is a `777` mount point for optional SSD storage.
+- The local Docker worker and the `szbl-cluster` Slurm target are registered together by default.
 
 The final image still contains the CryoSPARC MongoDB executable. The runtime
 database is created by `init`; removing the database software would prevent the
@@ -80,6 +81,8 @@ cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - Automatic worker registration uses `--ssdpath /ssd --ssdreserve 768` (MB). Set `CRYOSPARC_SCRATCH_PATH` to override the scratch path and `CRYOSPARC_SSD_RESERVE` to override the SSD reservation.
+- Cluster configuration uses the fixed files `/opt/cryosparc/cryosparc_master/bin/cluster_info.json` and `/opt/cryosparc/cryosparc_master/bin/cluster_script.sh`; set `CRYOSPARC_CLUSTER_ENABLED=false` to disable automatic Slurm registration.
+- The image includes `12.12.4.3 login03 login03.szbl.hpc etcd_node` in `/etc/hosts` for cluster access.
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
 - `reset all` removes all runtime data, user configuration, and the saved license.

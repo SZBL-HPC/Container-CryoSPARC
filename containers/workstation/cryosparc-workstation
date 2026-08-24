@@ -22,6 +22,8 @@ LICENSE_FILE="${CRYOSPARC_HOME}/license_id"
 INIT_MARKER="${CRYOSPARC_HOME}/.initialized"
 MASTER_CONFIG_DIR="${CRYOSPARC_HOME}/master"
 WORKER_CONFIG_DIR="${CRYOSPARC_HOME}/worker"
+CLUSTER_INFO_PATH="${MASTER_ROOT}/bin/cluster_info.json"
+CLUSTER_SCRIPT_PATH="${MASTER_ROOT}/bin/cluster_script.sh"
 
 requested_license="${CRYOSPARC_LICENSE_ID:-}"
 requested_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
@@ -271,6 +273,14 @@ connect_worker() {
     export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
 }
 
+connect_cluster() {
+    [[ "${CRYOSPARC_CLUSTER_ENABLED:-true}" == "true" ]] || return 0
+
+    "${MASTER_ROOT}/bin/cryosparcm" cluster connect \
+        "${CLUSTER_INFO_PATH}" \
+        "${CLUSTER_SCRIPT_PATH}"
+}
+
 start_core_services() {
     ensure_runtime_config
     mkdir -p "${DB_PATH}" "${SCRATCH_PATH}" "${PROJECTS_PATH}"
@@ -462,6 +472,7 @@ init_command() {
     create_initial_user
     touch "${INIT_MARKER}"
     connect_worker
+    connect_cluster
     printf 'initialized\n'
     print_login_info
 }
@@ -479,6 +490,7 @@ start_command() {
 
     start_core_services
     connect_worker
+    connect_cluster
     printf 'started\n'
 }
 

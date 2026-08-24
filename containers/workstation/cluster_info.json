@@ -1,0 +1,13 @@
+{
+    "send_cmd_tpl": "ssh login03 {{ command }}",
+    "qsub_cmd_tpl": "sbatch {{ script_path_abs }}",
+    "qstat_cmd_tpl": "squeue -j {{ cluster_job_id }}",
+    "qdel_cmd_tpl": "scancel {{ cluster_job_id }}",
+    "qinfo_cmd_tpl": "sinfo",
+    "cache_path": "/scratch.local",
+    "cache_reserve_mb": null,
+    "cache_quota_mb": null,
+    "name": "szbl-cluster",
+    "title": "",
+    "worker_bin_path": "/lenovofs1/software/apps/cryosparc/5.0.7/cryosparc_worker/bin/cryosparcw"
+}

@@ -70,6 +70,22 @@ cryosparc-download-data --dataset 10305
 cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 ```
 
+## Slurm Cluster
+
+The workstation registers the local Docker worker and the Slurm cluster as
+separate scheduler targets. The fixed configuration files are:
+
+```text
+/opt/cryosparc/cryosparc_master/bin/cluster_info.json
+/opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+```
+
+The image includes the cluster login host:
+
+```text
+12.12.4.3 login03 login03.szbl.hpc etcd_node
+```
+
 ## Speed Test
 
 必须使用 `--noproxy '*'`，否则可能受到本机代理环境影响。
