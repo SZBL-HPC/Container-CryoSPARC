@@ -277,8 +277,8 @@ connect_cluster() {
     [[ "${CRYOSPARC_CLUSTER_ENABLED:-true}" == "true" ]] || return 0
 
     "${MASTER_ROOT}/bin/cryosparcm" cluster connect \
-        "${CLUSTER_INFO_PATH}" \
-        "${CLUSTER_SCRIPT_PATH}"
+        --info "${CLUSTER_INFO_PATH}" \
+        --script "${CLUSTER_SCRIPT_PATH}"
 }
 
 start_core_services() {
