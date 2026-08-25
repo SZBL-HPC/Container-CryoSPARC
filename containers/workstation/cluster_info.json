@@ -1,5 +1,5 @@
 {
-    "send_cmd_tpl": "ssh login03 {{ command }}",
+    "send_cmd_tpl": "ssh 12.12.4.3 {{ command }}",
     "qsub_cmd_tpl": "sbatch {{ script_path_abs }}",
     "qstat_cmd_tpl": "squeue -j {{ cluster_job_id }}",
     "qdel_cmd_tpl": "scancel {{ cluster_job_id }}",
