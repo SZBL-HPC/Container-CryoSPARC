@@ -1,3 +1,13 @@
 #!/usr/bin/env bash
 
+workstation_cli="${CRYOSPARC_WORKSTATION_CLI:-/usr/local/bin/cryosparc-workstation}"
+if [[ -x "${workstation_cli}" ]]; then
+    env_output=""
+    if ! env_output="$(${workstation_cli} env)"; then
+        printf 'Unable to load the CryoSPARC workstation environment.\n' >&2
+        exit 1
+    fi
+    eval "${env_output}" || exit 1
+fi
+
 exec "${CRYOSPARC_INSTALL_ROOT:-/opt/cryosparc}/cryosparc_master/bin/cryosparcm" "$@"

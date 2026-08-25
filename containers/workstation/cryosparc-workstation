@@ -68,7 +68,6 @@ SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
 export USER="${USER:-${SSH_USER}}"
 export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
 export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
-export CRYOSPARC_FORCE_USER=true
 export CRYOSPARC_FORCE_HOSTNAME=true
 
 if [[ "${test_mode}" != true ]]; then
@@ -490,7 +489,6 @@ start_command() {
 
     start_core_services
     connect_worker
-    connect_cluster
     printf 'started\n'
 }
 
@@ -639,6 +637,58 @@ reset_all_command() {
     printf 'all runtime data, user configuration, and license were reset\n'
 }
 
+env_command() {
+    local license_value=""
+    local env_path=""
+
+    if [[ ! -s "${LICENSE_FILE}" ]]; then
+        printf 'CryoSPARC license file is missing or empty: %s\n' "${LICENSE_FILE}" >&2
+        return 1
+    fi
+
+    license_value="$(tr -d '[:space:]' < "${LICENSE_FILE}")"
+    if ! license_is_valid "${license_value}"; then
+        printf 'Invalid CryoSPARC license ID in %s\n' "${LICENSE_FILE}" >&2
+        return 1
+    fi
+
+    if [[ ! -r "${MASTER_CONFIG_DIR}/config.sh" ]]; then
+        printf 'Runtime master config is not readable: %s\n' "${MASTER_CONFIG_DIR}/config.sh" >&2
+        return 1
+    fi
+
+    env_path="${MASTER_ROOT}/bin:${WORKER_ROOT}/bin:${PATH}"
+    printf 'source %q\n' "${MASTER_CONFIG_DIR}/config.sh"
+    printf 'export CRYOSPARC_LICENSE_ID=$(<%q)\n' "${LICENSE_FILE}"
+    printf 'export CRYOSPARC_CONFIG_DIR=%q\n' "${MASTER_CONFIG_DIR}"
+    printf 'export CRYOSPARC_LOG_DIR=%q\n' "${MASTER_CONFIG_DIR}/run"
+    printf 'export CRYOSPARC_INSTALL_ROOT=%q\n' "${INSTALL_ROOT}"
+    printf 'export CRYOSPARC_HOME=%q\n' "${CRYOSPARC_HOME}"
+    printf 'export CRYOSPARC_MASTER_HOSTNAME=%q\n' "${MASTER_HOSTNAME}"
+    printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
+    printf 'export CRYOSPARC_DB_PATH=%q\n' "${DB_PATH}"
+    printf 'export CRYOSPARC_FORCE_HOSTNAME=true\n'
+    printf 'export PATH=%q\n' "${env_path}"
+}
+
+shell_command() {
+    local env_output=""
+    local shell_bin="${CRYOSPARC_SHELL:-${SHELL:-/bin/bash}}"
+
+    if ! env_output="$(env_command)"; then
+        return 1
+    fi
+    eval "${env_output}" || return 1
+
+    if [[ "${shell_bin}" != */* ]]; then
+        shell_bin="$(command -v "${shell_bin}" || true)"
+    fi
+    [[ -x "${shell_bin}" ]] || shell_bin=/bin/bash
+
+    printf 'Entering CryoSPARC environment shell. Type exit to return.\n'
+    exec "${shell_bin}" -i
+}
+
 warm_master_files() {
     local warm_root="${CRYOSPARC_WARM_ROOT:-${MASTER_ROOT}}"
 
@@ -696,6 +746,14 @@ case "${command}" in
         [[ $# -eq 0 ]] || { printf 'status does not accept arguments.\n' >&2; exit 2; }
         status_command
         ;;
+    env)
+        [[ $# -eq 0 ]] || { printf 'env does not accept arguments.\n' >&2; exit 2; }
+        env_command
+        ;;
+    shell)
+        [[ $# -eq 0 ]] || { printf 'shell does not accept arguments.\n' >&2; exit 2; }
+        shell_command
+        ;;
     stop)
         [[ $# -eq 0 ]] || { printf 'stop does not accept arguments.\n' >&2; exit 2; }
         stop_command
@@ -730,7 +788,7 @@ case "${command}" in
         test_command
         ;;
     *)
-        printf 'Usage: %s [init|start|status|stop|restart|reset {user|data|all}]\n' "$0" >&2
+        printf 'Usage: %s [init|start|status|env|shell|stop|restart|reset {user|data|all}]\n' "$0" >&2
         exit 2
         ;;
 esac

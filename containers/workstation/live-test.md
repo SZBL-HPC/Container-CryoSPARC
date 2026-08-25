@@ -80,11 +80,92 @@ separate scheduler targets. The fixed configuration files are:
 /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 ```
 
+每个 Slurm 作业脚本会从新节点可见的 `~/.cryosparc/license_id` 读取并导出
+`CRYOSPARC_LICENSE_ID`，镜像和 cluster template 不保存真实 license。
+
+首次初始化时会执行一次 `cryosparcm cluster connect` 注册 cluster lane；之后
+`start`/`restart` 直接使用数据库中的配置。修改这两个模板后，需要手动重新执行
+`cryosparcm cluster connect` 才会生效。
+
 The image includes the cluster login host:
 
 ```text
 12.12.4.3 login03 login03.szbl.hpc etcd_node
 ```
+
+### CryoSPARC Runtime Environment
+
+`cryosparc-workstation env` 不会默认设置 `CRYOSPARC_FORCE_USER`。
+该变量默认值为 `false`，只用于绕过 CryoSPARC 对安装目录所有者的安全检查；license
+一致本身不等于可以绕过这个文件所有者检查。需要明确绕过时才手动设置：
+
+```bash
+export CRYOSPARC_FORCE_USER=true
+```
+
+当前容器的 hostname 与 `CRYOSPARC_MASTER_HOSTNAME` 不同，因此 `env` 仍会设置
+`CRYOSPARC_FORCE_HOSTNAME=true`；如果容器 hostname 与 master hostname 改为一致，
+可以移除这个 override。
+
+### Slurm Resource Binding
+
+Slurm 的配置文件位于：
+
+```text
+/opt/gridview/slurm/etc/slurm.conf
+/opt/gridview/slurm/etc/gres.conf
+/opt/gridview/slurm/etc/cgroup.conf
+```
+
+当前集群的资源绑定配置已确认如下：
+
+- `SelectType=select/cons_tres`、`SelectTypeParameters=CR_CORE_MEMORY`：按可消耗的 CPU、内存和 GRES 资源分配作业。
+- `TaskPlugin=task/affinity,task/cgroup`、`ProctrackType=proctrack/cgroup`：作业进程使用 CPU affinity 和 cgroup 管理。
+- `/opt/gridview/slurm/etc/cgroup.conf` 设置 `ConstrainDevices=yes`、`ConstrainCores=yes`、`ConstrainRAMSpace=yes`、`ConstrainSwapSpace=no`；因此分配到的 GPU 设备和 CPU/内存范围会受到 cgroup 限制。
+- `/opt/gridview/slurm/etc/gres.conf` 将每个节点的 `/dev/nvidia0` 到 `/dev/nvidia7` 注册为 `NVIDIAGeForceRTX4090D`，每张 GPU 绑定对应的 CPU 核心集合。
+- `NV_4090D` 分区包含 `gn01` 到 `gn08`，共 64 张 GPU；分区默认值为每 GPU 8 CPU 和 102400 MB 内存。
+
+当前 cluster script 使用动态资源模板：
+
+```bash
+#SBATCH --gres=gpu:{{ num_gpu }}
+#SBATCH --partition NV_4090D
+```
+
+其中 `{{ num_gpu }}` 由 CryoSPARC 根据作业资源需求渲染。
+`--gres=gpu:{{ num_gpu }}` 负责向 Slurm 请求 GPU 数量，Slurm 再通过 GRES 和 cgroup 自动完成设备绑定；不需要在脚本中手工指定 `/dev/nvidia*` 或 `CUDA_VISIBLE_DEVICES`。
+当前 `NV_4090D` 分区的 `JobDefaults=DefCpuPerGPU=8,DefMemPerGPU=102400` 会根据 GPU 数量自动提供 CPU 和内存，因此模板不再显式设置 `--cpus-per-task` 或 `--mem`。
+
+CryoSPARC 官方 v5 文档将任务标记为 `GPU` 或 `Multi-GPU`；`Multi-GPU` 任务可以使用一张或多张 GPU。
+例如 GPU 版 `Extract from Micrographs` 明确支持通过 `Number of GPUs` 参数并行化。
+因此模板保留 `{{ num_gpu }}`，单 GPU 任务请求一张，多 GPU 任务按 CryoSPARC 资源分配请求多张。
+参考：
+`https://guide.cryosparc.com/application-guide/creating-and-running-jobs.md`、
+`https://guide.cryosparc.com/processing-data/all-job-types-in-cryosparc/extraction/job-extract-from-micrographs.md`。
+如果需要验证具体作业，可以在作业脚本中记录 `CUDA_VISIBLE_DEVICES`、`SLURM_JOB_GPUS` 和 `SLURM_GPUS_ON_NODE`，但不要覆盖 Slurm 已设置的 `CUDA_VISIBLE_DEVICES`。
+
+已在 `2026-08-25` 提交一次最小 GPU 作业验证绑定：请求
+`--gres=gpu:1 --cpus-per-task=1 --mem=1G`，Slurm 作业 `784210` 在 `gn05` 上以
+`COMPLETED 0:0` 结束，作业环境为：
+
+```text
+CUDA_VISIBLE_DEVICES=0
+SLURM_JOB_GPUS=6
+SLURM_GPUS_ON_NODE=1
+/usr/bin/nvidia-smi
+0, NVIDIA GeForce RTX 4090 D
+```
+
+这里 `SLURM_JOB_GPUS=6` 是节点上的物理 GRES 编号，而 `CUDA_VISIBLE_DEVICES=0`
+是作业进程看到的重映射编号；`nvidia-smi` 只看到分配的这一张 GPU，说明 GRES 和
+cgroup 设备绑定正在生效。
+
+随后又验证了不显式设置 CPU 和内存、只请求 GPU 的情况：
+
+- 作业 `784223` 使用 `--gres=gpu:1`，在 `gn02` 完成；`CUDA_VISIBLE_DEVICES=0`、`SLURM_JOB_GPUS=2`、`SLURM_GPUS_ON_NODE=1`、`SLURM_CPUS_ON_NODE=8`，`nvidia-smi` 只看到一张 RTX 4090 D。
+- 作业 `784224` 使用 `--gres=gpu:2`，在 `gn02` 完成；`CUDA_VISIBLE_DEVICES=0,1`、`SLURM_JOB_GPUS=2,3`、`SLURM_GPUS_ON_NODE=2`、`SLURM_CPUS_ON_NODE=16`，`nvidia-smi` 看到两张 RTX 4090 D。
+
+这说明当前 Slurm 的 GPU 数量请求、GPU 可见性和按 GPU 分配 CPU 默认值均已生效。
 
 ## Speed Test
 

@@ -67,6 +67,8 @@ The image also provides `/usr/local/bin/cryosparc-download-data`, backed by
 cryosparc-workstation init
 cryosparc-workstation start
 cryosparc-workstation status
+eval "$(cryosparc-workstation env)"
+cryosparc-workstation shell
 cryosparc-workstation stop
 cryosparc-workstation restart
 cryosparc-workstation reset user
@@ -79,9 +81,15 @@ cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 - `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default in an editable input buffer; press Enter to accept it, or edit it with readline before submitting.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
+- `env` prints runtime exports for direct `cryosparcm`/`cryosparcw` commands; activate them with `eval "$(cryosparc-workstation env)"`.
+- `shell` opens an interactive shell with the CryoSPARC runtime environment already loaded; type `exit` to return.
+- `/usr/local/bin/cryosparcm` automatically loads the same workstation environment before invoking the master CLI.
+- `CRYOSPARC_FORCE_USER` is not enabled by default; set it explicitly only when an owner check is intentionally being bypassed.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - Automatic worker registration uses `--ssdpath /ssd --ssdreserve 768` (MB). Set `CRYOSPARC_SCRATCH_PATH` to override the scratch path and `CRYOSPARC_SSD_RESERVE` to override the SSD reservation.
 - Cluster configuration uses the fixed files `/opt/cryosparc/cryosparc_master/bin/cluster_info.json` and `/opt/cryosparc/cryosparc_master/bin/cluster_script.sh`; set `CRYOSPARC_CLUSTER_ENABLED=false` to disable automatic Slurm registration.
+- The Slurm template requests the job's CryoSPARC GPU count through `--gres=gpu:{{ num_gpu }}`; the `NV_4090D` partition supplies its configured CPU and memory per GPU defaults. CryoSPARC v5 supports both GPU and Multi-GPU job types, so the template keeps `{{ num_gpu }}` dynamic instead of hard-coding one GPU.
+- `env` follows the documented v5 environment model in the [CryoSPARC environment variable reference](https://guide.cryosparc.com/setup-configuration-and-management/management-and-monitoring-v5.0/environment-variables-v5.0): it loads the runtime `config.sh` values and sets `CRYOSPARC_FORCE_HOSTNAME=true` for the container hostname mismatch. It does not set `CRYOSPARC_FORCE_USER`; that override remains opt-in.
 - The image includes `12.12.4.3 login03 login03.szbl.hpc etcd_node` in `/etc/hosts` for cluster access.
 - `reset user` overwrites only the first user with the init defaults.
 - `reset data` removes the database, projects, and scratch data while preserving license configuration.
