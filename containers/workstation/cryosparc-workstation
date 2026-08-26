@@ -68,6 +68,7 @@ SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
 export USER="${USER:-${SSH_USER}}"
 export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
 export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+export CRYOSPARC_FORCE_USER=true
 export CRYOSPARC_FORCE_HOSTNAME=true
 
 if [[ "${test_mode}" != true ]]; then
@@ -561,8 +562,14 @@ confirm_destructive() {
     [[ "${answer}" == [yY] || "${answer}" == [yY][eE][sS] ]]
 }
 
+clear_scratch_path() {
+    [[ -d "${SCRATCH_PATH}" ]] || return 0
+    find "${SCRATCH_PATH}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+}
+
 remove_data() {
-    rm -rf "${DB_PATH}" "${PROJECTS_PATH}" "${SCRATCH_PATH}" "${INIT_MARKER}"
+    rm -rf "${DB_PATH}" "${PROJECTS_PATH}" "${INIT_MARKER}"
+    clear_scratch_path
     mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
 }
 
@@ -628,11 +635,11 @@ reset_all_command() {
     rm -rf \
         "${DB_PATH}" \
         "${PROJECTS_PATH}" \
-        "${SCRATCH_PATH}" \
         "${MASTER_CONFIG_DIR}" \
         "${WORKER_CONFIG_DIR}" \
         "${LICENSE_FILE}" \
         "${INIT_MARKER}"
+    clear_scratch_path
     mkdir -p "${CRYOSPARC_HOME}"
     printf 'all runtime data, user configuration, and license were reset\n'
 }
@@ -667,6 +674,7 @@ env_command() {
     printf 'export CRYOSPARC_MASTER_HOSTNAME=%q\n' "${MASTER_HOSTNAME}"
     printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
     printf 'export CRYOSPARC_DB_PATH=%q\n' "${DB_PATH}"
+    printf 'export CRYOSPARC_FORCE_USER=true\n'
     printf 'export CRYOSPARC_FORCE_HOSTNAME=true\n'
     printf 'export PATH=%q\n' "${env_path}"
 }

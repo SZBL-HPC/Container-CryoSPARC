@@ -27,6 +27,7 @@ licensed distribution artifacts and should not be published without approval.
 
 ```bash
 export CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
+export CRYOSPARC_CLUSTER_HOSTS='12.12.4.3 login03 login03.szbl.hpc etcd_node'
 export CRYOSPARC_WORKER_NOGPU=true
 ./build-workstation-podman.sh
 ```
@@ -84,16 +85,16 @@ cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 - `env` prints runtime exports for direct `cryosparcm`/`cryosparcw` commands; activate them with `eval "$(cryosparc-workstation env)"`.
 - `shell` opens an interactive shell with the CryoSPARC runtime environment already loaded; type `exit` to return.
 - `/usr/local/bin/cryosparcm` automatically loads the same workstation environment before invoking the master CLI.
-- `CRYOSPARC_FORCE_USER` is not enabled by default; set it explicitly only when an owner check is intentionally being bypassed.
+- The container intentionally sets `CRYOSPARC_FORCE_USER=true` because `/opt/cryosparc` is root-owned in the image while services run as the mapped runtime user. A normal non-container installation should keep the documented default `false` unless an owner check must be bypassed.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - Automatic worker registration uses `--ssdpath /ssd --ssdreserve 768` (MB). Set `CRYOSPARC_SCRATCH_PATH` to override the scratch path and `CRYOSPARC_SSD_RESERVE` to override the SSD reservation.
 - Cluster configuration uses the fixed files `/opt/cryosparc/cryosparc_master/bin/cluster_info.json` and `/opt/cryosparc/cryosparc_master/bin/cluster_script.sh`; set `CRYOSPARC_CLUSTER_ENABLED=false` to disable automatic Slurm registration.
-- The Slurm template requests the job's CryoSPARC GPU count through `--gres=gpu:{{ num_gpu }}`; the `NV_4090D` partition supplies its configured CPU and memory per GPU defaults. CryoSPARC v5 supports both GPU and Multi-GPU job types, so the template keeps `{{ num_gpu }}` dynamic instead of hard-coding one GPU.
+- The Slurm template requests at least one GPU through `--gres=gpu:{{ 1 if num_gpu < 1 else num_gpu }}`; the `NV_4090D` partition supplies its configured CPU and memory per GPU defaults. CryoSPARC v5 supports both GPU and Multi-GPU job types, so a multi-GPU request remains dynamic while CPU-only jobs are promoted to one GPU on this cluster lane.
 - `env` follows the documented v5 environment model in the [CryoSPARC environment variable reference](https://guide.cryosparc.com/setup-configuration-and-management/management-and-monitoring-v5.0/environment-variables-v5.0): it loads the runtime `config.sh` values and sets `CRYOSPARC_FORCE_HOSTNAME=true` for the container hostname mismatch. It does not set `CRYOSPARC_FORCE_USER`; that override remains opt-in.
-- The image includes `12.12.4.3 login03 login03.szbl.hpc etcd_node` in `/etc/hosts` for cluster access.
+- The Dockerfile `ARG CRYOSPARC_CLUSTER_HOSTS` adds `12.12.4.3 login03 login03.szbl.hpc etcd_node` to `/etc/hosts` by default; set the same environment variable before `build-workstation-podman.sh` to override it.
 - `reset user` overwrites only the first user with the init defaults.
-- `reset data` removes the database, projects, and scratch data while preserving license configuration.
-- `reset all` removes all runtime data, user configuration, and the saved license.
+- `reset data` removes the database and projects, and attempts to clean the contents of the scratch directory while preserving the directory itself and the license configuration. Entries without sufficient permissions are skipped.
+- `reset all` removes all runtime data, user configuration, and the saved license, and applies the same permission-tolerant scratch cleanup without removing the scratch directory itself.
 - `init`, `start`, and `restart` asynchronously scan the entire master installation directory and warm files readable by the runtime user to reduce mechanical-disk startup latency. Unreadable files are skipped and counted. Set `CRYOSPARC_WARM_MASTER_FILES=false` to disable this behavior.
 
 Destructive reset commands require a terminal confirmation. For automation,

@@ -87,7 +87,8 @@ separate scheduler targets. The fixed configuration files are:
 `start`/`restart` 直接使用数据库中的配置。修改这两个模板后，需要手动重新执行
 `cryosparcm cluster connect` 才会生效。
 
-The image includes the cluster login host:
+The image includes the default cluster login host, controlled by the Dockerfile
+`ARG CRYOSPARC_CLUSTER_HOSTS`:
 
 ```text
 12.12.4.3 login03 login03.szbl.hpc etcd_node
@@ -95,13 +96,15 @@ The image includes the cluster login host:
 
 ### CryoSPARC Runtime Environment
 
-`cryosparc-workstation env` 不会默认设置 `CRYOSPARC_FORCE_USER`。
-该变量默认值为 `false`，只用于绕过 CryoSPARC 对安装目录所有者的安全检查；license
-一致本身不等于可以绕过这个文件所有者检查。需要明确绕过时才手动设置：
+官方默认值为 `false`，该变量用于绕过 CryoSPARC 对安装目录所有者的安全检查；license
+一致本身不等于可以绕过这个文件所有者检查。由于镜像中的 `/opt/cryosparc` 由 `root`
+所有、服务由映射后的运行用户执行，`cryosparc-workstation env` 会显式设置：
 
 ```bash
 export CRYOSPARC_FORCE_USER=true
 ```
+
+普通非容器安装不应默认打开这个 override。
 
 当前容器的 hostname 与 `CRYOSPARC_MASTER_HOSTNAME` 不同，因此 `env` 仍会设置
 `CRYOSPARC_FORCE_HOSTNAME=true`；如果容器 hostname 与 master hostname 改为一致，
@@ -128,17 +131,19 @@ Slurm 的配置文件位于：
 当前 cluster script 使用动态资源模板：
 
 ```bash
-#SBATCH --gres=gpu:{{ num_gpu }}
+#SBATCH --gres=gpu:{{ 1 if num_gpu < 1 else num_gpu }}
 #SBATCH --partition NV_4090D
 ```
 
 其中 `{{ num_gpu }}` 由 CryoSPARC 根据作业资源需求渲染。
-`--gres=gpu:{{ num_gpu }}` 负责向 Slurm 请求 GPU 数量，Slurm 再通过 GRES 和 cgroup 自动完成设备绑定；不需要在脚本中手工指定 `/dev/nvidia*` 或 `CUDA_VISIBLE_DEVICES`。
+`--gres=gpu:{{ 1 if num_gpu < 1 else num_gpu }}` 保证该 cluster lane 至少申请一张 GPU；多 GPU 作业仍按 CryoSPARC 的 `{{ num_gpu }}` 请求数量提交。
+Slurm 再通过 GRES 和 cgroup 自动完成设备绑定；不需要在脚本中手工指定 `/dev/nvidia*` 或 `CUDA_VISIBLE_DEVICES`。
 当前 `NV_4090D` 分区的 `JobDefaults=DefCpuPerGPU=8,DefMemPerGPU=102400` 会根据 GPU 数量自动提供 CPU 和内存，因此模板不再显式设置 `--cpus-per-task` 或 `--mem`。
 
 CryoSPARC 官方 v5 文档将任务标记为 `GPU` 或 `Multi-GPU`；`Multi-GPU` 任务可以使用一张或多张 GPU。
 例如 GPU 版 `Extract from Micrographs` 明确支持通过 `Number of GPUs` 参数并行化。
-因此模板保留 `{{ num_gpu }}`，单 GPU 任务请求一张，多 GPU 任务按 CryoSPARC 资源分配请求多张。
+因此模板保留 `{{ num_gpu }}`，普通任务至少请求一张，多 GPU 任务按 CryoSPARC 资源分配请求多张。
+模板中的 license 检查使用 `[[ ... ]] || { ...; }`，不要把 Shell 行写成以 `if` 开头；当前 CryoSPARC 的 Jinja line statement 会吞掉这类行首 `if`。
 参考：
 `https://guide.cryosparc.com/application-guide/creating-and-running-jobs.md`、
 `https://guide.cryosparc.com/processing-data/all-job-types-in-cryosparc/extraction/job-extract-from-micrographs.md`。

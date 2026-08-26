@@ -3,6 +3,7 @@
 # CRYOSPARC_WORKER_NOGPU=false only when the build environment has a usable GPU.
 
 ARG CUDA_IMAGE=nvidia/cuda:12.8.2-base-ubuntu24.04
+ARG CRYOSPARC_CLUSTER_HOSTS="12.12.4.3 login03 login03.szbl.hpc etcd_node"
 
 FROM ubuntu:24.04 AS package-unpack
 
@@ -119,6 +120,8 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
 
 FROM runtime-base AS workstation
 
+ARG CRYOSPARC_CLUSTER_HOSTS
+
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     CRYOSPARC_INSTALL_ROOT=/opt/cryosparc \
@@ -133,8 +136,8 @@ COPY containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-dow
 COPY containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
 COPY containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
-RUN if ! grep -Eq '^12\.12\.4\.3[[:space:]]+login03([[:space:]]+login03\.szbl\.hpc)?[[:space:]]+etcd_node[[:space:]]*$' /etc/hosts; then \
-        printf '%s\n' '12.12.4.3 login03 login03.szbl.hpc etcd_node' >> /etc/hosts; \
+RUN if [[ -n "${CRYOSPARC_CLUSTER_HOSTS}" ]] && ! grep -Fqx -- "${CRYOSPARC_CLUSTER_HOSTS}" /etc/hosts; then \
+        printf '%s\n' "${CRYOSPARC_CLUSTER_HOSTS}" >> /etc/hosts; \
     fi \
     && chmod -R a+rwX /opt/cryosparc \
     && mkdir -p /ssd \

@@ -47,7 +47,7 @@ BUILD_ARGS=(
     --build-arg "CRYOSPARC_WORKER_NOGPU=${WORKER_NOGPU}"
 )
 
-for name in CRYOSPARC_BUILD_LICENSE_ID; do
+for name in CRYOSPARC_BUILD_LICENSE_ID CRYOSPARC_CLUSTER_HOSTS; do
     if [[ -n "${!name:-}" ]]; then
         BUILD_ARGS+=(--build-arg "${name}=${!name}")
     fi
