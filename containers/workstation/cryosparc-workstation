@@ -49,17 +49,64 @@ fi
 
 BASE_PORT="${requested_base_port:-${runtime_base_port:-${CRYOSPARC_BASE_PORT:-61000}}}"
 
-detect_hostname() {
+detect_master_address() {
+    local route_output
+    local address
     local hostname_value
+
+    # Select the address used by the container's default route so cluster jobs
+    # connect to the container interface instead of its private hostname.
+    if command -v ip >/dev/null 2>&1; then
+        route_output="$(ip -4 route get 1.1.1.1 2>/dev/null || true)"
+        if [[ "${route_output}" =~ (^|[[:space:]])src[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)($|[[:space:]]) ]]; then
+            printf '%s' "${BASH_REMATCH[2]}"
+            return 0
+        fi
+
+        while IFS= read -r address; do
+            if [[ "${address}" =~ [[:space:]]inet[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/[0-9]+([[:space:]]|$) ]]; then
+                printf '%s' "${BASH_REMATCH[1]}"
+                return 0
+            fi
+        done < <(ip -4 -o addr show scope global up 2>/dev/null || true)
+    fi
+
+    while read -r address _; do
+        if [[ "${address}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '%s' "${address}"
+            return 0
+        fi
+    done < <(hostname -I 2>/dev/null || true)
 
     hostname_value="$(hostname -f 2>/dev/null || true)"
     if [[ -z "${hostname_value}" ]]; then
-        hostname_value="$(hostname)"
+        hostname_value="$(hostname 2>/dev/null || true)"
     fi
-    printf '%s' "${hostname_value}"
+    printf '%s' "${hostname_value:-localhost}"
 }
 
-MASTER_HOSTNAME="${requested_hostname:-${runtime_hostname:-$(detect_hostname)}}"
+is_default_master_hostname() {
+    local hostname_value="$1"
+    local short_hostname
+    local full_hostname
+
+    [[ -z "${hostname_value}" || "${hostname_value}" == 'localhost' ]] && return 0
+    [[ "${hostname_value}" == 127.* || "${hostname_value}" == '::1' ]] && return 0
+    [[ "${hostname_value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] && return 0
+
+    short_hostname="$(hostname 2>/dev/null || true)"
+    full_hostname="$(hostname -f 2>/dev/null || true)"
+    [[ "${hostname_value}" == "${short_hostname}" || "${hostname_value}" == "${full_hostname}" ]]
+}
+
+detected_master_address="$(detect_master_address)"
+if [[ -n "${requested_hostname}" ]]; then
+    MASTER_HOSTNAME="${requested_hostname}"
+elif [[ -n "${runtime_hostname}" ]] && ! is_default_master_hostname "${runtime_hostname}"; then
+    MASTER_HOSTNAME="${runtime_hostname}"
+else
+    MASTER_HOSTNAME="${detected_master_address}"
+fi
 WORKER_NAME="${CRYOSPARC_WORKER_NAME:-${MASTER_HOSTNAME}}"
 current_user="$(id -un 2>/dev/null || true)"
 SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
