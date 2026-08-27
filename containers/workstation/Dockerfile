@@ -159,6 +159,6 @@ RUN chmod 755 \
     /usr/local/bin/cryosparc-workstation \
     /usr/local/bin/cryosparc-container
 
-EXPOSE 22 61000
+EXPOSE 22 61000 61001 61002 61003 61004 61005 61006
 
 ENTRYPOINT ["/usr/local/bin/cryosparc-container"]
