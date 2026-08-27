@@ -150,15 +150,26 @@ ensure_runtime_config() {
     export CRYOSPARC_DB_PATH="${DB_PATH}"
 }
 
-supervisor_pid_file="${MASTER_CONFIG_DIR}/run/supervisord.pid"
+supervisor_pid_file="${CRYOSPARC_SUPERVISOR_PID_FILE:-/var/run/cryosparc-supervisord.pid}"
 
 supervisor_running() {
     local supervisor_pid
+    local supervisor_command
 
     [[ -s "${supervisor_pid_file}" ]] || return 1
     read -r supervisor_pid < "${supervisor_pid_file}"
     [[ "${supervisor_pid}" =~ ^[0-9]+$ ]] || return 1
-    kill -0 "${supervisor_pid}" 2>/dev/null
+    kill -0 "${supervisor_pid}" 2>/dev/null || return 1
+
+    supervisor_command="$(ps -p "${supervisor_pid}" -o args= 2>/dev/null || true)"
+    [[ "${supervisor_command}" == *supervisord* ]] || return 1
+    [[ "${supervisor_command}" == *"${MASTER_ROOT}"* ]]
+}
+
+api_listening() {
+    local api_port=$((BASE_PORT + 2))
+
+    ss -ltnH "sport = :${api_port}" 2>/dev/null | grep -q .
 }
 
 web_listening() {
@@ -177,14 +188,23 @@ start_master_daemon() {
     local attempt
     local start_output
     local start_status
+    local start_command
 
-    if supervisor_running; then
+    if supervisor_running && api_listening; then
         return 0
     fi
 
     for attempt in 1 2 3; do
+        if supervisor_running; then
+            # A live supervisor with no API listener is stale or only partially
+            # started; cryosparcm start refuses that state, so restart it.
+            start_command=restart
+        else
+            start_command=start
+        fi
+
         start_status=0
-        start_output="$("${MASTER_ROOT}/bin/cryosparcm" start 2>&1)" || start_status=$?
+        start_output="$("${MASTER_ROOT}/bin/cryosparcm" "${start_command}" 2>&1)" || start_status=$?
 
         if [[ "${start_status}" -eq 0 ]]; then
             printf '%s\n' "${start_output}"
@@ -194,7 +214,7 @@ start_master_daemon() {
         # A startup race can leave supervisor/API running even though the
         # top-level command returned 503. The remaining services are started
         # explicitly after the API becomes ready.
-        if supervisor_running; then
+        if supervisor_running && api_listening; then
             printf 'CryoSPARC master is starting; waiting for API readiness.\n'
             return 0
         fi

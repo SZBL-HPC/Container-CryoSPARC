@@ -125,7 +125,8 @@ ARG CRYOSPARC_CLUSTER_HOSTS
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     CRYOSPARC_INSTALL_ROOT=/opt/cryosparc \
-    CRYOSPARC_BASE_PORT=61000
+    CRYOSPARC_BASE_PORT=61000 \
+    CRYOSPARC_SUPERVISOR_PID_FILE=/var/run/cryosparc-supervisord.pid
 
 COPY --from=installer /opt/cryosparc /opt/cryosparc
 COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
@@ -140,6 +141,11 @@ RUN if [[ -n "${CRYOSPARC_CLUSTER_HOSTS}" ]] && ! grep -Fqx -- "${CRYOSPARC_CLUS
         printf '%s\n' "${CRYOSPARC_CLUSTER_HOSTS}" >> /etc/hosts; \
     fi \
     && chmod -R a+rwX /opt/cryosparc \
+    && sed -i \
+        's#^pidfile=%(ENV_CRYOSPARC_LOG_DIR)s/supervisord.pid$#pidfile=%(ENV_CRYOSPARC_SUPERVISOR_PID_FILE)s#' \
+        /opt/cryosparc/cryosparc_master/config/supervisord.conf \
+    && mkdir -p /var/run \
+    && chmod 777 /var/run \
     && mkdir -p /ssd \
     && chmod 777 /ssd \
     && chmod 755 /usr/local/bin/cryosparcm \
