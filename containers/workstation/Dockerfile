@@ -120,15 +120,15 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
 
 FROM runtime-base AS workstation
 
-ARG CRYOSPARC_CLUSTER_HOSTS
+COPY --from=installer /opt/cryosparc /opt/cryosparc
 
+ARG CRYOSPARC_CLUSTER_HOSTS
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     CRYOSPARC_INSTALL_ROOT=/opt/cryosparc \
     CRYOSPARC_BASE_PORT=61000 \
     CRYOSPARC_SUPERVISOR_PID_FILE=/var/run/cryosparc-supervisord.pid
 
-COPY --from=installer /opt/cryosparc /opt/cryosparc
 COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
 COPY containers/workstation/entrypoint /usr/local/bin/cryosparc-container
 COPY containers/workstation/cryosparcm /usr/local/bin/cryosparcm
