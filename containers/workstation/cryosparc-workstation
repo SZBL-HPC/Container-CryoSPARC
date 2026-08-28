@@ -108,6 +108,60 @@ resolve_master_hostname() {
     fi
 }
 
+no_proxy_contains_host() {
+    local no_proxy_value="$1"
+    local host="$2"
+    local entry
+    local entries=()
+
+    [[ -z "${no_proxy_value}" ]] && return 1
+    [[ "${no_proxy_value}" == '*' ]] && return 0
+
+    IFS=',' read -ra entries <<< "${no_proxy_value}"
+    for entry in "${entries[@]}"; do
+        entry="${entry#"${entry%%[![:space:]]*}"}"
+        entry="${entry%"${entry##*[![:space:]]}"}"
+        [[ -z "${entry}" ]] && continue
+        [[ "${entry}" == '*' || "${entry}" == "${host}" ]] && return 0
+        if [[ "${entry}" == .* && "${host}" == *"${entry}" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+append_master_to_no_proxy() {
+    local no_proxy_value="$1"
+    local host="$2"
+
+    if no_proxy_contains_host "${no_proxy_value}" "${host}"; then
+        printf '%s' "${no_proxy_value}"
+    elif [[ -n "${no_proxy_value}" ]]; then
+        printf '%s,%s' "${no_proxy_value%,}" "${host}"
+    else
+        printf '%s' "${host}"
+    fi
+}
+
+configure_no_proxy() {
+    local uppercase_no_proxy="${NO_PROXY:-}"
+    local lowercase_no_proxy="${no_proxy:-}"
+    local combined_no_proxy
+
+    if [[ -z "${uppercase_no_proxy}" ]]; then
+        combined_no_proxy="${lowercase_no_proxy}"
+    elif [[ -z "${lowercase_no_proxy}" || "${uppercase_no_proxy}" == "${lowercase_no_proxy}" ]]; then
+        combined_no_proxy="${uppercase_no_proxy}"
+    else
+        combined_no_proxy="${uppercase_no_proxy},${lowercase_no_proxy}"
+    fi
+
+    combined_no_proxy="$(append_master_to_no_proxy "${combined_no_proxy}" "${MASTER_HOSTNAME}")"
+    export NO_PROXY="${combined_no_proxy}"
+    export no_proxy="${combined_no_proxy}"
+}
+
 detect_worker_name() {
     printf 'localhost'
 }
@@ -147,6 +201,7 @@ set_master_connection_values() {
 }
 
 resolve_master_hostname
+configure_no_proxy
 resolve_worker_name
 set_master_connection_values
 
@@ -424,6 +479,7 @@ connect_cluster() {
 
 start_core_services() {
     resolve_master_hostname true
+    configure_no_proxy
     set_master_connection_values
     ensure_runtime_config
     mkdir -p "${DB_PATH}" "${SCRATCH_PATH}" "${PROJECTS_PATH}"
@@ -816,6 +872,8 @@ env_command() {
     printf 'export CRYOSPARC_HOME=%q\n' "${CRYOSPARC_HOME}"
     printf 'export CRYOSPARC_MASTER_HOSTNAME=%q\n' "${MASTER_HOSTNAME}"
     printf 'export CRYOSPARC_MASTER_HOSTNAME_AUTO=%q\n' "${MASTER_HOSTNAME_AUTO}"
+    printf 'export NO_PROXY=%q\n' "${NO_PROXY}"
+    printf 'export no_proxy=%q\n' "${no_proxy}"
     printf 'export CRYOSPARC_WORKER_NAME=%q\n' "${WORKER_NAME}"
     printf 'export CRYOSPARC_WORKER_NAME_AUTO=%q\n' "${WORKER_NAME_AUTO}"
     printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
