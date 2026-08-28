@@ -27,6 +27,7 @@ CLUSTER_SCRIPT_PATH="${MASTER_ROOT}/bin/cluster_script.sh"
 
 requested_license="${CRYOSPARC_LICENSE_ID:-}"
 requested_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
+requested_worker_name="${CRYOSPARC_WORKER_NAME:-}"
 requested_base_port="${CRYOSPARC_BASE_PORT:-}"
 test_mode=false
 if [[ "${1:-}" == 'test' ]]; then
@@ -35,16 +36,21 @@ fi
 
 if [[ "${test_mode}" != true ]]; then
     source "${MASTER_ROOT}/config.sh"
+    requested_worker_name="${requested_worker_name:-${CRYOSPARC_WORKER_NAME:-}}"
 fi
 
 runtime_hostname=""
 runtime_hostname_auto=""
+runtime_worker_name=""
+runtime_worker_name_auto=""
 runtime_base_port=""
 runtime_license=""
 if [[ "${test_mode}" != true && -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
     source "${MASTER_CONFIG_DIR}/config.sh"
     runtime_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
     runtime_hostname_auto="${CRYOSPARC_MASTER_HOSTNAME_AUTO:-}"
+    runtime_worker_name="${CRYOSPARC_WORKER_NAME:-}"
+    runtime_worker_name_auto="${CRYOSPARC_WORKER_NAME_AUTO:-}"
     runtime_base_port="${CRYOSPARC_BASE_PORT:-}"
     runtime_license="${CRYOSPARC_LICENSE_ID:-}"
 fi
@@ -102,14 +108,46 @@ resolve_master_hostname() {
     fi
 }
 
+detect_worker_name() {
+    printf 'localhost'
+}
+
+is_platform_worker_name() {
+    local worker_name="$1"
+    local current_hostname
+    local current_fqdn
+
+    [[ "${worker_name}" == 'localhost' || "${worker_name}" == 'localhost.localdomain' ]] && return 0
+    current_hostname="$(hostname 2>/dev/null || true)"
+    current_fqdn="$(hostname -f 2>/dev/null || true)"
+    [[ -n "${current_hostname}" && "${worker_name}" == "${current_hostname}" ]] && return 0
+    [[ -n "${current_fqdn}" && "${worker_name}" == "${current_fqdn}" ]] && return 0
+    [[ "${worker_name}" =~ ^worker-[0-9]+$ ]]
+}
+
+resolve_worker_name() {
+    WORKER_NAME_AUTO=false
+    if [[ -n "${requested_worker_name}" ]]; then
+        WORKER_NAME="${requested_worker_name}"
+    elif [[ -n "${runtime_worker_name}" && "${runtime_worker_name_auto}" != true ]] \
+        && ! is_platform_worker_name "${runtime_worker_name}"; then
+        WORKER_NAME="${runtime_worker_name}"
+    else
+        WORKER_NAME="$(detect_worker_name)"
+        WORKER_NAME_AUTO=true
+    fi
+}
+
 set_master_connection_values() {
-    WORKER_NAME="${CRYOSPARC_WORKER_NAME:-${MASTER_HOSTNAME}}"
     current_user="$(id -un 2>/dev/null || true)"
     SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
-    SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
+    # The managed worker runs in this container, so use loopback for its SSH
+    # endpoint and localhost as its default local-worker identity.
+    SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@localhost}"
 }
 
 resolve_master_hostname
+resolve_worker_name
 set_master_connection_values
 
 export USER="${USER:-${SSH_USER}}"
@@ -186,6 +224,8 @@ ensure_runtime_config() {
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_LICENSE_ID "${LICENSE_ID}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME "${MASTER_HOSTNAME}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME_AUTO "${MASTER_HOSTNAME_AUTO}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME "${WORKER_NAME}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME_AUTO "${WORKER_NAME_AUTO}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_BASE_PORT "${BASE_PORT}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_DB_PATH "${DB_PATH}"
 
@@ -195,6 +235,8 @@ ensure_runtime_config() {
     export CRYOSPARC_LICENSE_ID="${LICENSE_ID}"
     export CRYOSPARC_MASTER_HOSTNAME="${MASTER_HOSTNAME}"
     export CRYOSPARC_MASTER_HOSTNAME_AUTO="${MASTER_HOSTNAME_AUTO}"
+    export CRYOSPARC_WORKER_NAME="${WORKER_NAME}"
+    export CRYOSPARC_WORKER_NAME_AUTO="${WORKER_NAME_AUTO}"
     export CRYOSPARC_BASE_PORT="${BASE_PORT}"
     export CRYOSPARC_DB_PATH="${DB_PATH}"
 }
@@ -774,6 +816,8 @@ env_command() {
     printf 'export CRYOSPARC_HOME=%q\n' "${CRYOSPARC_HOME}"
     printf 'export CRYOSPARC_MASTER_HOSTNAME=%q\n' "${MASTER_HOSTNAME}"
     printf 'export CRYOSPARC_MASTER_HOSTNAME_AUTO=%q\n' "${MASTER_HOSTNAME_AUTO}"
+    printf 'export CRYOSPARC_WORKER_NAME=%q\n' "${WORKER_NAME}"
+    printf 'export CRYOSPARC_WORKER_NAME_AUTO=%q\n' "${WORKER_NAME_AUTO}"
     printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
     printf 'export CRYOSPARC_DB_PATH=%q\n' "${DB_PATH}"
     printf 'export CRYOSPARC_SUPERVISOR_PID_FILE=%q\n' "${supervisor_pid_file}"

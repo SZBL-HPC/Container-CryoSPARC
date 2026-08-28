@@ -16,6 +16,9 @@
 | `10.10.5.1` | 临时用于网络和 mDNS 验证的计算节点 |
 | `127.0.0.1` | 仅用于容器内部的本地健康检查 |
 
+外部 SSH 端口可能随测试容器实例变化。
+2026-08-28 对运行中容器的实际入口是 `ssh -p 40001 xshu@10.68.247.45`；此前的 `40008` 仍是另一实例/测试入口，不能将端口号写死为容器内部地址。
+
 容器内的 CryoSPARC 服务端口如下：
 
 | 端口 | 服务 |
@@ -136,16 +139,66 @@ Dockerfile 已在 `containers/workstation/Dockerfile:31-49` 安装 `iproute2`，
 
 其中：
 
-- `--master` 必须是计算节点和容器内都能访问的 master 地址。
-- `CRYOSPARC_WORKER_NAME` 可以显式指定 worker 名称。
+- `--master` 必须是计算节点和容器内都能访问的 master 地址，当前应使用可达 IPv4，而不是仅容器内部可解析的 `worker-0`。
+- `CRYOSPARC_WORKER_NAME` 可以显式覆盖本地 worker 的注册名；未显式指定时，当前脚本将同容器 worker 注册为 `localhost`，不使用平台提供的 `worker-0`、`worker-1` 等容器 hostname。
 - `CRYOSPARC_SSH_USER` 和 `CRYOSPARC_SSHSTR` 可以显式指定 worker SSH 用户和连接字符串。
-- 未显式指定 `CRYOSPARC_WORKER_NAME` 时，当前脚本默认使用 `MASTER_HOSTNAME` 作为 worker 名称。
+- 未显式指定 `CRYOSPARC_SSHSTR` 时，当前脚本默认使用 `${SSH_USER}@localhost`，因为受管理的本地 worker 与 master 位于同一个容器。
+- 对本地 worker，`--worker` 和 `--sshstr` 默认都使用 localhost 语义；`localhost` 不能替代 Slurm 作业中的 `--master`，计算节点仍必须使用可达的 master IP 或稳定 DNS 名称。
 
 修改 master 地址后，应重新执行 worker 注册。
+
+如果已有本地 worker 是按旧 IP、`worker-0` 或 `worker-1` 注册的，切换为 `localhost` 后会产生一次新的 worker target；确认新 target 正常后，应在 CryoSPARC 中移除旧 target。
 
 新提交的作业会使用新的 master 地址；已有作业需要重新生成或重新提交其 `queue_sub_script.sh`。
 
 ## 4. Slurm 作业脚本与资源绑定
+
+### 4.1 运行中作业的检查路径
+
+作业文件位于登录节点可访问的共享文件系统上，不需要登录实际计算节点读取。
+当前验证过的路径是：从 `ln03` 查询 Slurm 作业，再将小文件 `scp` 到本地用 `Read` 或 `sed` 分析。
+
+运行中作业的 `NodeList` 可以通过 `scontrol show job -dd <job_id>` 获取；例如作业 `785203` 的实际节点是 `gn03`，因此需要检查计算节点运行态时，可以从 `ln03` 执行 SSH 到 `gn03`，但不能假设真实节点上的普通用户拥有 `sudo` 或 Docker socket 权限。
+
+作业 `785203` 的脚本为：
+
+```text
+/lenovofs1/home/xshu/SothisAI/instance/ssh/v12_1_0/job_xshu_20260828_111215
+```
+
+该脚本的关键行为如下：
+
+- 第 12-23 行设置作业目录、加载 `/opt/gridview/slurm/etc/sothisai/function.sh`、计算 `dockername` 并启动容器监控。
+- 第 13-15 行对 `prepare_container` 执行 `cat`，所以该文件是启动日志，不是由 batch script 执行的容器启动命令。
+- 第 29 行调用平台预先生成的 `/usr/bin/sudo /usr/bin/ai_docker logs -f ${dockername}`；这是作业模板中的平台命令，不能作为交互用户在 `gn03` 上可以使用 `sudo` 的依据。
+- 第 35-56 行只轮询 `getDockerStatus` 并在容器退出时写入 `task.message`。
+
+实际容器运行信息记录在：
+
+```text
+/lenovofs1/home/xshu/SothisAI/instance/ssh/v12_1_0/_dockerlist_785203
+```
+
+该文件记录 `ALIAS=worker-0`、`NAME=785203_gn03`、`NODE=gn03`、`IPADDR=173.0.71.3`，并记录了以下关键挂载：
+
+```text
+/lenovofs1/home/xshu/SothisAI/instance_service/v12/shared_hosts:/etc/hosts
+```
+
+其 MOUNT 列表没有显式的 `/etc/hostname` 挂载。
+Docker 为容器提供的 `/etc/hostname` 仍应以容器自己的 hostname 配置为准；2026-08-28 从 `ssh -p 40001 xshu@10.68.247.45` 观察到 `/etc/hostname` 内容为 `worker-0`。
+
+当前 `shared_hosts` 内容为：
+
+```text
+127.0.0.1 localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1 localhost localhost.localdomain localhost6 localhost6.localdomain6
+173.0.74.4 worker-0
+173.0.71.3 worker-0
+```
+
+因此平台当前同时把两个容器 IP 映射为同一个 `worker-0`，解析顺序具有歧义。
+worker 数据库名称可以稳定使用 `worker-0`，但 master 连接地址仍应使用实际可达 IP，并应避免依赖这个包含重复 IP 的 `/etc/hosts` 条目作为唯一网络发现机制。
 
 `containers/workstation/cluster_script.sh:2-20` 负责渲染 Slurm 作业脚本：
 
