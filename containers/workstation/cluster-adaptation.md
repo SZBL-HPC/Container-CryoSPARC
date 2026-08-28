@@ -95,9 +95,20 @@ worker-0:61001: [Errno -2] Name or service not known
 
 修改 runtime config 不会自动改写已经生成的作业脚本。
 
-### 3.2 自动选择 IPv4
+### 3.2 启动时刷新 IPv4
 
-当前 `containers/workstation/cryosparc-workstation:52-108` 使用 `detect_master_address()`：
+`CRYOSPARC_MASTER_HOSTNAME` 是当前容器运行状态，不是容器网络配置。容器每次重新创建后，Docker 可能从允许的地址范围分配不同的 IP，因此不能把上一次启动探测到的 IP 当作下一次启动的输入。
+
+当前 `containers/workstation/cryosparc-workstation` 的行为分为两类：
+
+1. `start`、`restart` 或初始化真正启动核心服务前，`start_core_services()` 重新执行 `detect_master_address()`，从默认路由的 source IPv4 获取当前地址。
+2. 探测结果先写入 `${HOME}/.cryosparc/master/config.sh`，再启动 MongoDB、API 和其他服务，确保它们使用同一个当前地址。
+3. `status`、`env`、`stop` 等非启动命令只读取 runtime config 中最近一次成功写入的地址，不会在服务运行期间自行覆盖配置。
+4. 如果显式设置 `CRYOSPARC_MASTER_HOSTNAME`，启动时保留该值；否则每次启动都使用当前默认路由地址。
+
+单节点 MongoDB 不需要随容器 IP 变化而导出/导入数据或重建 replica set：`ex/cryosparc_master/core/database_management.py:85-107` 初始化的成员地址是 `localhost:61001`，`ex/cryosparc_master/core/database_management.py:216-224` 也使用 `directConnection=True`。启动时需要更新的是 CryoSPARC 访问 MongoDB 所用的 master 地址，而不是 MongoDB 数据目录中的成员地址。
+
+`detect_master_address()` 的探测顺序为：
 
 1. 使用 `ip -4 route get 1.1.1.1` 提取默认路由的 source IPv4。
 2. 如果没有默认路由，回退到第一个 `scope global` IPv4。
@@ -106,15 +117,9 @@ worker-0:61001: [Errno -2] Name or service not known
 
 Dockerfile 已在 `containers/workstation/Dockerfile:31-49` 安装 `iproute2`，因此正式镜像具备该检测能力。
 
-地址选择优先级为：
+`CRYOSPARC_MASTER_HOSTNAME_AUTO` 只记录这次地址是否由自动探测得到，不再作为下一次启动保留旧 IP 的依据。
 
-1. 显式设置的 `CRYOSPARC_MASTER_HOSTNAME`。
-2. 非默认的持久化 master hostname，例如管理员指定的 DNS 名称。
-3. 自动检测的默认路由 IPv4。
-
-`localhost`、loopback 地址、当前容器 hostname 和错误的 CIDR 形式，例如 `173.0.75.3/24`，会被当作旧默认值并迁移到自动检测的纯 IPv4 地址。
-
-多网卡环境如果默认路由不是计算节点可达的网络，应显式设置 `CRYOSPARC_MASTER_HOSTNAME`，不要依赖自动选择。
+多网卡环境如果默认路由不是计算节点可达的网络，应显式设置 `CRYOSPARC_MASTER_HOSTNAME`，并在每次启动时继续提供该环境变量，或者将其配置在容器的固定环境中。
 
 ### 3.3 Worker 注册
 

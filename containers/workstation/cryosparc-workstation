@@ -38,11 +38,13 @@ if [[ "${test_mode}" != true ]]; then
 fi
 
 runtime_hostname=""
+runtime_hostname_auto=""
 runtime_base_port=""
 runtime_license=""
 if [[ "${test_mode}" != true && -f "${MASTER_CONFIG_DIR}/config.sh" ]]; then
     source "${MASTER_CONFIG_DIR}/config.sh"
     runtime_hostname="${CRYOSPARC_MASTER_HOSTNAME:-}"
+    runtime_hostname_auto="${CRYOSPARC_MASTER_HOSTNAME_AUTO:-}"
     runtime_base_port="${CRYOSPARC_BASE_PORT:-}"
     runtime_license="${CRYOSPARC_LICENSE_ID:-}"
 fi
@@ -85,32 +87,30 @@ detect_master_address() {
     printf '%s' "${hostname_value:-localhost}"
 }
 
-is_default_master_hostname() {
-    local hostname_value="$1"
-    local short_hostname
-    local full_hostname
+resolve_master_hostname() {
+    local refresh_address="${1:-false}"
 
-    [[ -z "${hostname_value}" || "${hostname_value}" == 'localhost' ]] && return 0
-    [[ "${hostname_value}" == 127.* || "${hostname_value}" == '::1' ]] && return 0
-    [[ "${hostname_value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] && return 0
-
-    short_hostname="$(hostname 2>/dev/null || true)"
-    full_hostname="$(hostname -f 2>/dev/null || true)"
-    [[ "${hostname_value}" == "${short_hostname}" || "${hostname_value}" == "${full_hostname}" ]]
+    MASTER_HOSTNAME_AUTO=false
+    if [[ -n "${requested_hostname}" ]]; then
+        MASTER_HOSTNAME="${requested_hostname}"
+    elif [[ "${refresh_address}" == true || -z "${runtime_hostname}" ]]; then
+        MASTER_HOSTNAME="$(detect_master_address)"
+        MASTER_HOSTNAME_AUTO=true
+    else
+        MASTER_HOSTNAME="${runtime_hostname}"
+        MASTER_HOSTNAME_AUTO="${runtime_hostname_auto:-false}"
+    fi
 }
 
-detected_master_address="$(detect_master_address)"
-if [[ -n "${requested_hostname}" ]]; then
-    MASTER_HOSTNAME="${requested_hostname}"
-elif [[ -n "${runtime_hostname}" ]] && ! is_default_master_hostname "${runtime_hostname}"; then
-    MASTER_HOSTNAME="${runtime_hostname}"
-else
-    MASTER_HOSTNAME="${detected_master_address}"
-fi
-WORKER_NAME="${CRYOSPARC_WORKER_NAME:-${MASTER_HOSTNAME}}"
-current_user="$(id -un 2>/dev/null || true)"
-SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
-SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
+set_master_connection_values() {
+    WORKER_NAME="${CRYOSPARC_WORKER_NAME:-${MASTER_HOSTNAME}}"
+    current_user="$(id -un 2>/dev/null || true)"
+    SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
+    SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@${WORKER_NAME}}"
+}
+
+resolve_master_hostname
+set_master_connection_values
 
 export USER="${USER:-${SSH_USER}}"
 export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
@@ -185,6 +185,7 @@ ensure_runtime_config() {
 
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_LICENSE_ID "${LICENSE_ID}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME "${MASTER_HOSTNAME}"
+    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME_AUTO "${MASTER_HOSTNAME_AUTO}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_BASE_PORT "${BASE_PORT}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_DB_PATH "${DB_PATH}"
 
@@ -193,11 +194,42 @@ ensure_runtime_config() {
     # Keep the values available to the CryoSPARC CLI and its Python environment.
     export CRYOSPARC_LICENSE_ID="${LICENSE_ID}"
     export CRYOSPARC_MASTER_HOSTNAME="${MASTER_HOSTNAME}"
+    export CRYOSPARC_MASTER_HOSTNAME_AUTO="${MASTER_HOSTNAME_AUTO}"
     export CRYOSPARC_BASE_PORT="${BASE_PORT}"
     export CRYOSPARC_DB_PATH="${DB_PATH}"
 }
 
 supervisor_pid_file="${CRYOSPARC_SUPERVISOR_PID_FILE:-/var/run/cryosparc-supervisord.pid}"
+export CRYOSPARC_SUPERVISOR_PID_FILE="${supervisor_pid_file}"
+legacy_supervisor_pid_file="${MASTER_CONFIG_DIR}/run/supervisord.pid"
+
+migrate_legacy_supervisor_pid() {
+    local legacy_pid
+    local legacy_command
+
+    [[ "${legacy_supervisor_pid_file}" == "${supervisor_pid_file}" ]] && return 0
+
+    if [[ -s "${supervisor_pid_file}" ]]; then
+        rm -f "${legacy_supervisor_pid_file}"
+        return 0
+    fi
+
+    [[ -s "${legacy_supervisor_pid_file}" ]] || return 0
+    read -r legacy_pid < "${legacy_supervisor_pid_file}"
+    if [[ "${legacy_pid}" =~ ^[0-9]+$ ]] && kill -0 "${legacy_pid}" 2>/dev/null; then
+        legacy_command="$(ps -p "${legacy_pid}" -o args= 2>/dev/null || true)"
+        if [[ "${legacy_command}" == *supervisord* && "${legacy_command}" == *"${MASTER_ROOT}"* ]]; then
+            if printf '%s\n' "${legacy_pid}" > "${supervisor_pid_file}"; then
+                rm -f "${legacy_supervisor_pid_file}"
+            fi
+            return 0
+        fi
+    fi
+
+    rm -f "${legacy_supervisor_pid_file}"
+}
+
+migrate_legacy_supervisor_pid
 
 supervisor_running() {
     local supervisor_pid
@@ -349,6 +381,8 @@ connect_cluster() {
 }
 
 start_core_services() {
+    resolve_master_hostname true
+    set_master_connection_values
     ensure_runtime_config
     mkdir -p "${DB_PATH}" "${SCRATCH_PATH}" "${PROJECTS_PATH}"
     start_master_daemon
@@ -739,8 +773,10 @@ env_command() {
     printf 'export CRYOSPARC_INSTALL_ROOT=%q\n' "${INSTALL_ROOT}"
     printf 'export CRYOSPARC_HOME=%q\n' "${CRYOSPARC_HOME}"
     printf 'export CRYOSPARC_MASTER_HOSTNAME=%q\n' "${MASTER_HOSTNAME}"
+    printf 'export CRYOSPARC_MASTER_HOSTNAME_AUTO=%q\n' "${MASTER_HOSTNAME_AUTO}"
     printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
     printf 'export CRYOSPARC_DB_PATH=%q\n' "${DB_PATH}"
+    printf 'export CRYOSPARC_SUPERVISOR_PID_FILE=%q\n' "${supervisor_pid_file}"
     printf 'export CRYOSPARC_FORCE_USER=true\n'
     printf 'export CRYOSPARC_FORCE_HOSTNAME=true\n'
     printf 'export PATH=%q\n' "${env_path}"
