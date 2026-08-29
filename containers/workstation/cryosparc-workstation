@@ -11,6 +11,12 @@ INSTALL_ROOT="${CRYOSPARC_INSTALL_ROOT:-/opt/cryosparc}"
 MASTER_ROOT="${INSTALL_ROOT}/cryosparc_master"
 WORKER_ROOT="${INSTALL_ROOT}/cryosparc_worker"
 
+if [[ -f "${WORKER_ROOT}/bin/cryosparcw" ]]; then
+    LOCAL_WORKER_ENABLED=true
+else
+    LOCAL_WORKER_ENABLED=false
+fi
+
 : "${HOME:?HOME must be set}"
 
 CRYOSPARC_HOME="${CRYOSPARC_HOME:-${HOME}/.cryosparc}"
@@ -36,7 +42,9 @@ fi
 
 if [[ "${test_mode}" != true ]]; then
     source "${MASTER_ROOT}/config.sh"
-    requested_worker_name="${requested_worker_name:-${CRYOSPARC_WORKER_NAME:-}}"
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        requested_worker_name="${requested_worker_name:-${CRYOSPARC_WORKER_NAME:-}}"
+    fi
 fi
 
 runtime_hostname=""
@@ -93,14 +101,35 @@ detect_master_address() {
     printf '%s' "${hostname_value:-localhost}"
 }
 
+detect_master_hostname() {
+    local hostname_value
+
+    hostname_value="$(hostname -f 2>/dev/null || true)"
+    if [[ -z "${hostname_value}" ]]; then
+        hostname_value="$(hostname 2>/dev/null || true)"
+    fi
+    printf '%s' "${hostname_value:-localhost}"
+}
+
+is_ipv4_address() {
+    [[ "${1:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
 resolve_master_hostname() {
     local refresh_address="${1:-false}"
 
     MASTER_HOSTNAME_AUTO=false
-    if [[ -n "${requested_hostname}" ]]; then
+    if [[ -f "${CLUSTER_INFO_PATH}" ]]; then
+        if is_ipv4_address "${requested_hostname}"; then
+            MASTER_HOSTNAME="${requested_hostname}"
+        else
+            MASTER_HOSTNAME="$(detect_master_address)"
+            MASTER_HOSTNAME_AUTO=true
+        fi
+    elif [[ -n "${requested_hostname}" ]]; then
         MASTER_HOSTNAME="${requested_hostname}"
     elif [[ "${refresh_address}" == true || -z "${runtime_hostname}" ]]; then
-        MASTER_HOSTNAME="$(detect_master_address)"
+        MASTER_HOSTNAME="$(detect_master_hostname)"
         MASTER_HOSTNAME_AUTO=true
     else
         MASTER_HOSTNAME="${runtime_hostname}"
@@ -195,14 +224,19 @@ resolve_worker_name() {
 set_master_connection_values() {
     current_user="$(id -un 2>/dev/null || true)"
     SSH_USER="${CRYOSPARC_SSH_USER:-${current_user:-$(id -u)}}"
-    # The managed worker runs in this container, so use loopback for its SSH
-    # endpoint and localhost as its default local-worker identity.
+    # A local worker, when present, uses loopback for its SSH endpoint and
+    # localhost as its default local-worker identity.
     SSH_STRING="${CRYOSPARC_SSHSTR:-${SSH_USER}@localhost}"
 }
 
 resolve_master_hostname
 configure_no_proxy
-resolve_worker_name
+if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+    resolve_worker_name
+else
+    WORKER_NAME=''
+    WORKER_NAME_AUTO=false
+fi
 set_master_connection_values
 
 export USER="${USER:-${SSH_USER}}"
@@ -212,7 +246,10 @@ export CRYOSPARC_FORCE_USER=true
 export CRYOSPARC_FORCE_HOSTNAME=true
 
 if [[ "${test_mode}" != true ]]; then
-    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}"
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        mkdir -p "${WORKER_CONFIG_DIR}"
+    fi
 fi
 
 set_config_value() {
@@ -279,21 +316,25 @@ ensure_runtime_config() {
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_LICENSE_ID "${LICENSE_ID}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME "${MASTER_HOSTNAME}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_MASTER_HOSTNAME_AUTO "${MASTER_HOSTNAME_AUTO}"
-    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME "${WORKER_NAME}"
-    set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME_AUTO "${WORKER_NAME_AUTO}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_BASE_PORT "${BASE_PORT}"
     set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_DB_PATH "${DB_PATH}"
 
-    printf 'export CRYOSPARC_LICENSE_ID=%q\n' "${LICENSE_ID}" > "${WORKER_CONFIG_DIR}/config.sh"
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME "${WORKER_NAME}"
+        set_config_value "${MASTER_CONFIG_DIR}/config.sh" CRYOSPARC_WORKER_NAME_AUTO "${WORKER_NAME_AUTO}"
+        printf 'export CRYOSPARC_LICENSE_ID=%q\n' "${LICENSE_ID}" > "${WORKER_CONFIG_DIR}/config.sh"
+    fi
 
     # Keep the values available to the CryoSPARC CLI and its Python environment.
     export CRYOSPARC_LICENSE_ID="${LICENSE_ID}"
     export CRYOSPARC_MASTER_HOSTNAME="${MASTER_HOSTNAME}"
     export CRYOSPARC_MASTER_HOSTNAME_AUTO="${MASTER_HOSTNAME_AUTO}"
-    export CRYOSPARC_WORKER_NAME="${WORKER_NAME}"
-    export CRYOSPARC_WORKER_NAME_AUTO="${WORKER_NAME_AUTO}"
     export CRYOSPARC_BASE_PORT="${BASE_PORT}"
     export CRYOSPARC_DB_PATH="${DB_PATH}"
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        export CRYOSPARC_WORKER_NAME="${WORKER_NAME}"
+        export CRYOSPARC_WORKER_NAME_AUTO="${WORKER_NAME_AUTO}"
+    fi
 }
 
 supervisor_pid_file="${CRYOSPARC_SUPERVISOR_PID_FILE:-/var/run/cryosparc-supervisord.pid}"
@@ -446,6 +487,14 @@ wait_for_web() {
 connect_worker() {
     local gpu_args=()
 
+    [[ "${LOCAL_WORKER_ENABLED}" == true ]] || return 0
+
+    if [[ ! -x "${WORKER_ROOT}/bin/cryosparcw" ]]; then
+        printf 'Local worker is enabled, but its CLI is missing: %s\n' \
+            "${WORKER_ROOT}/bin/cryosparcw" >&2
+        return 1
+    fi
+
     export CRYOSPARC_CONFIG_DIR="${WORKER_CONFIG_DIR}"
     export CRYOSPARC_LOG_DIR="${WORKER_CONFIG_DIR}/run"
 
@@ -471,6 +520,7 @@ connect_worker() {
 
 connect_cluster() {
     [[ "${CRYOSPARC_CLUSTER_ENABLED:-true}" == "true" ]] || return 0
+    [[ -f "${CLUSTER_INFO_PATH}" && -f "${CLUSTER_SCRIPT_PATH}" ]] || return 0
 
     "${MASTER_ROOT}/bin/cryosparcm" cluster connect \
         --info "${CLUSTER_INFO_PATH}" \
@@ -769,7 +819,10 @@ clear_scratch_path() {
 remove_data() {
     rm -rf "${DB_PATH}" "${PROJECTS_PATH}" "${INIT_MARKER}"
     clear_scratch_path
-    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}" "${WORKER_CONFIG_DIR}"
+    mkdir -p "${CRYOSPARC_HOME}" "${MASTER_CONFIG_DIR}"
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        mkdir -p "${WORKER_CONFIG_DIR}"
+    fi
 }
 
 reset_data_command() {
@@ -863,7 +916,7 @@ env_command() {
         return 1
     fi
 
-    env_path="${MASTER_ROOT}/bin:${WORKER_ROOT}/bin:${PATH}"
+    env_path="${MASTER_ROOT}/bin:${PATH}"
     printf 'source %q\n' "${MASTER_CONFIG_DIR}/config.sh"
     printf 'export CRYOSPARC_LICENSE_ID=$(<%q)\n' "${LICENSE_FILE}"
     printf 'export CRYOSPARC_CONFIG_DIR=%q\n' "${MASTER_CONFIG_DIR}"
@@ -874,13 +927,16 @@ env_command() {
     printf 'export CRYOSPARC_MASTER_HOSTNAME_AUTO=%q\n' "${MASTER_HOSTNAME_AUTO}"
     printf 'export NO_PROXY=%q\n' "${NO_PROXY}"
     printf 'export no_proxy=%q\n' "${no_proxy}"
-    printf 'export CRYOSPARC_WORKER_NAME=%q\n' "${WORKER_NAME}"
-    printf 'export CRYOSPARC_WORKER_NAME_AUTO=%q\n' "${WORKER_NAME_AUTO}"
     printf 'export CRYOSPARC_BASE_PORT=%q\n' "${BASE_PORT}"
     printf 'export CRYOSPARC_DB_PATH=%q\n' "${DB_PATH}"
     printf 'export CRYOSPARC_SUPERVISOR_PID_FILE=%q\n' "${supervisor_pid_file}"
     printf 'export CRYOSPARC_FORCE_USER=true\n'
     printf 'export CRYOSPARC_FORCE_HOSTNAME=true\n'
+    if [[ "${LOCAL_WORKER_ENABLED}" == true ]]; then
+        env_path="${MASTER_ROOT}/bin:${WORKER_ROOT}/bin:${PATH}"
+        printf 'export CRYOSPARC_WORKER_NAME=%q\n' "${WORKER_NAME}"
+        printf 'export CRYOSPARC_WORKER_NAME_AUTO=%q\n' "${WORKER_NAME_AUTO}"
+    fi
     printf 'export PATH=%q\n' "${env_path}"
 }
 

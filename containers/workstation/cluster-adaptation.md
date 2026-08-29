@@ -102,16 +102,18 @@ worker-0:61001: [Errno -2] Name or service not known
 
 `CRYOSPARC_MASTER_HOSTNAME` 是当前容器运行状态，不是容器网络配置。容器每次重新创建后，Docker 可能从允许的地址范围分配不同的 IP，因此不能把上一次启动探测到的 IP 当作下一次启动的输入。
 
-当前 `containers/workstation/cryosparc-workstation` 的行为分为两类：
+当前 `containers/workstation/cryosparc-workstation` 的行为由
+`/opt/cryosparc/cryosparc_master/bin/cluster_info.json` 是否存在决定：
 
-1. `start`、`restart` 或初始化真正启动核心服务前，`start_core_services()` 重新执行 `detect_master_address()`，从默认路由的 source IPv4 获取当前地址。
-2. 探测结果先写入 `${HOME}/.cryosparc/master/config.sh`，再启动 MongoDB、API 和其他服务，确保它们使用同一个当前地址。
-3. `status`、`env`、`stop` 等非启动命令只读取 runtime config 中最近一次成功写入的地址，不会在服务运行期间自行覆盖配置。
-4. 如果显式设置 `CRYOSPARC_MASTER_HOSTNAME`，启动时保留该值；否则每次启动都使用当前默认路由地址。
+1. 文件存在时，`start`、`restart` 或初始化真正启动核心服务前，`start_core_services()` 重新从默认路由的 source IPv4 获取当前地址。
+2. 文件存在且显式设置 `CRYOSPARC_MASTER_HOSTNAME` 为纯 IPv4 时，保留该值，便于多网卡环境选择计算节点可达的网卡；显式 hostname 不覆盖集群模式的 IPv4 逻辑。
+3. 文件不存在时，启动使用容器 hostname，并跳过自动 `cluster connect`，适用于不带集群配置的纯 workstation 变体。
+4. 地址结果先写入 `${HOME}/.cryosparc/master/config.sh`，再启动 MongoDB、API 和其他服务，确保它们使用同一个当前地址。
+5. `status`、`env`、`stop` 等非启动命令只读取 runtime config 中最近一次成功写入的地址，不会在服务运行期间自行覆盖配置。
 
 单节点 MongoDB 不需要随容器 IP 变化而导出/导入数据或重建 replica set：`ex/cryosparc_master/core/database_management.py:85-107` 初始化的成员地址是 `localhost:61001`，`ex/cryosparc_master/core/database_management.py:216-224` 也使用 `directConnection=True`。启动时需要更新的是 CryoSPARC 访问 MongoDB 所用的 master 地址，而不是 MongoDB 数据目录中的成员地址。
 
-`detect_master_address()` 的探测顺序为：
+集群配置存在时，`detect_master_address()` 的探测顺序为：
 
 1. 使用 `ip -4 route get 1.1.1.1` 提取默认路由的 source IPv4。
 2. 如果没有默认路由，回退到第一个 `scope global` IPv4。
@@ -122,11 +124,12 @@ Dockerfile 已在 `containers/workstation/Dockerfile:31-49` 安装 `iproute2`，
 
 `CRYOSPARC_MASTER_HOSTNAME_AUTO` 只记录这次地址是否由自动探测得到，不再作为下一次启动保留旧 IP 的依据。
 
-多网卡环境如果默认路由不是计算节点可达的网络，应显式设置 `CRYOSPARC_MASTER_HOSTNAME`，并在每次启动时继续提供该环境变量，或者将其配置在容器的固定环境中。
+多网卡环境如果默认路由不是计算节点可达的网络，应显式设置纯 IPv4 的
+`CRYOSPARC_MASTER_HOSTNAME`，并在每次启动时继续提供该环境变量，或者将其配置在容器的固定环境中。
 
 ### 3.3 Worker 注册
 
-`containers/workstation/cryosparc-workstation:317-339` 的 `connect_worker()` 使用以下参数注册 worker：
+`containers/workstation/cryosparc-workstation` 的 `connect_worker()` 使用以下参数注册 worker：
 
 ```text
 --master ${MASTER_HOSTNAME}
@@ -312,22 +315,33 @@ sudo ss -ltnp 'sport = :61001'
 
 ## 7. 镜像构建缓存
 
-`containers/workstation/Dockerfile:121-130` 当前顺序为：
+`containers/workstation/Dockerfile` 当前使用三个最终 target：
 
 ```dockerfile
-FROM runtime-base AS workstation
+FROM master0 AS master
 
-COPY --from=installer /opt/cryosparc /opt/cryosparc
+COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
-ARG CRYOSPARC_CLUSTER_HOSTS
-ENV ...
+FROM master0 AS workstation
+
+COPY --from=installer /opt/cryosparc/cryosparc_worker /opt/cryosparc/cryosparc_worker
+
+FROM workstation AS hybrid
+
+COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 ```
 
-`/opt/cryosparc` 是安装阶段生成的大目录。
+installer 阶段会统一执行 `chmod -R a+rwX /opt/cryosparc`，因此三个 target
+从 installer 复制时都会保留运行用户可写权限。
 
-把它放在运行时 `ARG` 和 `ENV` 之前后，修改运行时环境变量不会使该复制层失效。
+master target 包含 cluster 配置但不包含 worker 文件；workstation target 只追加 worker，
+不包含 cluster 配置；hybrid target 在 workstation 基础上追加 cluster 配置。
+修改运行时环境变量不会使安装阶段的大复制层失效。
 
-构建日志中如果 installer 阶段显示 `Using cache`，但 workstation 阶段重新执行，首先检查 workstation 阶段的 `ARG`、`ENV` 和上下文中的脚本是否发生变化。
+构建日志中如果 installer 阶段显示 `Using cache`，但某个最终 target 重新执行，首先检查
+该 target 的上下文脚本、cluster 配置和 target 选择是否发生变化。
 
 ## 8. 推荐操作流程
 

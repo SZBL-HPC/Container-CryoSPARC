@@ -9,7 +9,7 @@ FROM ubuntu:24.04 AS package-unpack
 
 WORKDIR /build
 
-    COPY pkg /build/pkg
+COPY pkg /build/pkg
 
 RUN mkdir -p \
         /opt/cryosparc/cryosparc_master \
@@ -22,7 +22,7 @@ RUN mkdir -p \
         --strip-components=1 \
         --directory /opt/cryosparc/cryosparc_worker
 
-FROM ${CUDA_IMAGE} AS runtime-base
+FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -118,47 +118,50 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
         /opt/cryosparc/initial \
         /build/pkg
 
-FROM runtime-base AS workstation
+RUN chmod -R a+rwX /opt/cryosparc
 
-COPY --from=installer /opt/cryosparc /opt/cryosparc
+FROM runtime-base AS master0
 
-ARG CRYOSPARC_CLUSTER_HOSTS
+COPY --from=installer /opt/cryosparc/cryosparc_master /opt/cryosparc/cryosparc_master
+
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     CRYOSPARC_INSTALL_ROOT=/opt/cryosparc \
     CRYOSPARC_BASE_PORT=61000 \
     CRYOSPARC_SUPERVISOR_PID_FILE=/var/run/cryosparc-supervisord.pid
 
-COPY containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
-COPY containers/workstation/entrypoint /usr/local/bin/cryosparc-container
-COPY containers/workstation/cryosparcm /usr/local/bin/cryosparcm
-COPY containers/workstation/cryosparcw /usr/local/bin/cryosparcw
-COPY containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-download-data
-COPY containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
-COPY containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+COPY --chmod=755 containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
+COPY --chmod=755 containers/workstation/entrypoint /usr/local/bin/cryosparc-container
+COPY --chmod=755 containers/workstation/cryosparcm /usr/local/bin/cryosparcm
+COPY --chmod=755 containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-download-data
 
+ARG CRYOSPARC_CLUSTER_HOSTS
 RUN if [[ -n "${CRYOSPARC_CLUSTER_HOSTS}" ]] && ! grep -Fqx -- "${CRYOSPARC_CLUSTER_HOSTS}" /etc/hosts; then \
         printf '%s\n' "${CRYOSPARC_CLUSTER_HOSTS}" >> /etc/hosts; \
     fi \
-    && chmod -R a+rwX /opt/cryosparc \
     && sed -i \
         's#^pidfile=%(ENV_CRYOSPARC_LOG_DIR)s/supervisord.pid$#pidfile=%(ENV_CRYOSPARC_SUPERVISOR_PID_FILE)s#' \
         /opt/cryosparc/cryosparc_master/config/supervisord.conf \
     && mkdir -p /var/run \
     && chmod 777 /var/run \
     && mkdir -p /ssd \
-    && chmod 777 /ssd \
-    && chmod 755 /usr/local/bin/cryosparcm \
-        /usr/local/bin/cryosparcw \
-        /usr/local/bin/cryosparc-download-data \
-    && chmod 644 \
-        /opt/cryosparc/cryosparc_master/bin/cluster_info.json \
-        /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
-
-RUN chmod 755 \
-    /usr/local/bin/cryosparc-workstation \
-    /usr/local/bin/cryosparc-container
+    && chmod 777 /ssd
 
 EXPOSE 22 61000 61001 61002 61003 61004 61005 61006
 
 ENTRYPOINT ["/usr/local/bin/cryosparc-container"]
+
+FROM master0 AS master
+
+COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+
+FROM master0 AS workstation
+
+COPY --from=installer /opt/cryosparc/cryosparc_worker /opt/cryosparc/cryosparc_worker
+COPY --chmod=755 containers/workstation/cryosparcw /usr/local/bin/cryosparcw
+
+FROM workstation AS hybrid
+
+COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
