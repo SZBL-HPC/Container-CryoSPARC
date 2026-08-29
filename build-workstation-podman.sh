@@ -103,7 +103,6 @@ build_target() {
     build_command=(
         "${PODMAN_BIN}" build
         --format docker
-        --platform linux/amd64
         --target "${target}"
         --file "${DOCKERFILE_PATH}"
         --tag "${image_name}"
