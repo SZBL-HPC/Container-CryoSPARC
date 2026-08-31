@@ -24,8 +24,9 @@ master service from running.
 
 ## Build
 
-The four CryoSPARC package archives must be present in `pkg/` locally. They are
-licensed distribution artifacts and should not be published without approval.
+The master CryoSPARC package archive must be present in `pkg/` locally. The
+worker and patch archives are optional. They are licensed distribution artifacts
+and should not be published without approval.
 
 ```bash
 export CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
@@ -45,6 +46,13 @@ ARM 主机上构建需要 Podman 提供相应的 amd64 模拟支持。
 ```
 三个 target 默认生成 `localhost/cryosparc-master:latest`、
 `localhost/cryosparc-workstation:latest` 和 `localhost/cryosparc-hybrid:latest`。
+可以使用 `--tags` 或 `-t` 追加逗号分隔的 tag，同时保留默认的 `latest`，例如：
+
+```bash
+./build-workstation-podman.sh --tags v4,0831 --run
+```
+
+该命令会为每个构建的 target 添加 `latest`、`v4` 和 `0831` 三个 tag。
 构建单个 target 时可以用 `IMAGE_NAME` 覆盖标签；构建全部 target 时用
 `MASTER_IMAGE_NAME`、`WORKSTATION_IMAGE_NAME` 和 `HYBRID_IMAGE_NAME` 分别覆盖标签。
 

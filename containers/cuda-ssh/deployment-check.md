@@ -588,8 +588,8 @@ containers/workstation/cryosparc-workstation
 Dockerfile 的主要阶段如下：
 
 1. `runtime-base`：准备 CUDA 12.8.2、OpenSSH、运行库和诊断工具。
-2. `installer-base` 及可选 package stages：始终直接解包 master 包；`CRYOSPARC_INCLUDE_WORKER` 默认开启，按需解包 worker 包；两个 patch 包分别由默认关闭的 ARG 控制 `COPY`。
-3. `installer`：运行 master/worker 安装器；如果本地存在 master/worker patch 包则在构建期间安装，否则跳过 patch。构建期间临时使用数据库完成安装和 patch。
+2. `installer-base` 及可选 package stages：始终直接解包 master 包；`CRYOSPARC_INCLUDE_WORKER` 默认开启，通过 `installer-worker-true/false` 按需解包 worker 包。
+3. `installer`：只复制 `pkg/` 根目录下的 patch 包，使用 `--exclude='pkg/*/**'` 排除备份旧版等子目录，并运行存在的 master/worker 安装器；如果本地存在 patch 包则在构建期间安装，否则跳过。构建期间临时使用数据库完成安装和 patch。
 4. `master0`、`master`、`workstation`、`hybrid`：从安装阶段复制对应最终安装目录，不携带预初始化数据库或用户。
 
 构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `cryosparc-workstation` 输入。

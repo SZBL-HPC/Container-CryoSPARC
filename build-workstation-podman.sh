@@ -6,11 +6,26 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 DOCKERFILE_PATH="${ROOT_DIR}/containers/workstation/Dockerfile"
 
 usage() {
-    printf 'Usage: %s [--target master|workstation|hybrid] [--run]\n' "$0"
+    printf 'Usage: %s [--target master|workstation|hybrid] [--tags tag[,tag...]] [--run]\n' "$0"
 }
 
 RUN_BUILD=false
 TARGET=""
+EXTRA_TAGS=()
+
+append_tags() {
+    local value="$1"
+    local -a tags
+
+    if [[ -z "${value}" || "${value}" == ,* || "${value}" == *, || "${value}" == *,,* ]]; then
+        printf 'Tags must be a comma-separated list of non-empty values: %s\n' "${value}" >&2
+        exit 2
+    fi
+
+    IFS=',' read -r -a tags <<< "${value}"
+    EXTRA_TAGS+=("${tags[@]}")
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target)
@@ -20,6 +35,17 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             TARGET="$1"
+            ;;
+        --tags|-t)
+            shift
+            if [[ $# -eq 0 ]]; then
+                usage >&2
+                exit 2
+            fi
+            append_tags "$1"
+            ;;
+        --tags=*)
+            append_tags "${1#*=}"
             ;;
         --run)
             RUN_BUILD=true
@@ -55,7 +81,6 @@ fi
 PKG_DIR="${ROOT_DIR}/pkg"
 MASTER_PACKAGE="${PKG_DIR}/cryosparc_master.tar.gz"
 WORKER_PACKAGE="${PKG_DIR}/cryosparc_worker.tar.gz"
-MASTER_PATCH="${PKG_DIR}/cryosparc_master_patch.tar.gz"
 WORKER_PATCH="${PKG_DIR}/cryosparc_worker_patch.tar.gz"
 UPDATE_PACKAGES="${ROOT_DIR}/update-packages.sh"
 
@@ -104,15 +129,6 @@ else
     BUILD_TARGETS=(master)
 fi
 
-INCLUDE_MASTER_PATCH=false
-INCLUDE_WORKER_PATCH=false
-if [[ -f "${MASTER_PATCH}" ]]; then
-    INCLUDE_MASTER_PATCH=true
-fi
-if [[ -f "${WORKER_PATCH}" ]]; then
-    INCLUDE_WORKER_PATCH=true
-fi
-
 MASTER_IMAGE_NAME="${MASTER_IMAGE_NAME:-localhost/cryosparc-master:latest}"
 WORKSTATION_IMAGE_NAME="${WORKSTATION_IMAGE_NAME:-localhost/cryosparc-workstation:latest}"
 HYBRID_IMAGE_NAME="${HYBRID_IMAGE_NAME:-localhost/cryosparc-hybrid:latest}"
@@ -140,8 +156,6 @@ BUILD_ARGS=(
     --build-arg "CUDA_IMAGE=${CUDA_IMAGE}"
     --build-arg "CRYOSPARC_WORKER_NOGPU=${WORKER_NOGPU}"
     --build-arg "CRYOSPARC_INCLUDE_WORKER=${HAS_WORKER_PACKAGE}"
-    --build-arg "CRYOSPARC_INCLUDE_MASTER_PATCH=${INCLUDE_MASTER_PATCH}"
-    --build-arg "CRYOSPARC_INCLUDE_WORKER_PATCH=${INCLUDE_WORKER_PATCH}"
 )
 
 for name in CRYOSPARC_BUILD_LICENSE_ID CRYOSPARC_CLUSTER_HOSTS; do
@@ -153,6 +167,7 @@ done
 build_target() {
     local target="$1"
     local image_name
+    local image_prefix
     local -a build_command
 
     case "${target}" in
@@ -160,6 +175,7 @@ build_target() {
         workstation) image_name="${WORKSTATION_IMAGE_NAME}" ;;
         hybrid) image_name="${HYBRID_IMAGE_NAME}" ;;
     esac
+    image_prefix="${image_name%:*}"
 
     build_command=(
         "${PODMAN_BIN}" build
@@ -167,9 +183,11 @@ build_target() {
         --target "${target}"
         --file "${DOCKERFILE_PATH}"
         --tag "${image_name}"
-        "${BUILD_ARGS[@]}"
-        "${ROOT_DIR}"
     )
+    for tag in "${EXTRA_TAGS[@]}"; do
+        build_command+=(--tag "${image_prefix}:${tag}")
+    done
+    build_command+=("${BUILD_ARGS[@]}" "${ROOT_DIR}")
 
     printf '%q ' "${build_command[@]}"
     printf '\n'
