@@ -8,12 +8,10 @@ ARG CRYOSPARC_INCLUDE_WORKER=true
 
 FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime-base
 
-ENV DEBIAN_FRONTEND=noninteractive
-
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
         aria2 \
@@ -58,9 +56,7 @@ ADD pkg/cryosparc_worker.tar.gz /opt/cryosparc/
 
 FROM installer-base AS installer-worker-false
 
-FROM installer-worker-${CRYOSPARC_INCLUDE_WORKER} AS installer-worker-selected
-
-FROM installer-worker-selected AS installer
+FROM installer-worker-${CRYOSPARC_INCLUDE_WORKER} AS installer
 
 ARG CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
 ARG CRYOSPARC_WORKER_NOGPU=true
@@ -102,8 +98,9 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
     fi \
     && if [[ -f /build/pkg/cryosparc_worker_patch.tar.gz ]]; then \
         cp /build/pkg/cryosparc_worker_patch.tar.gz /opt/cryosparc/cryosparc_worker/; \
-    fi \
-    && export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
+    fi
+
+RUN export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm start \
     && if [[ -f /opt/cryosparc/cryosparc_master/cryosparc_master_patch.tar.gz ]]; then \
@@ -114,8 +111,9 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
         && ./bin/cryosparcw patch; \
     fi \
     && cd /opt/cryosparc/cryosparc_master \
-    && ./bin/cryosparcm stop \
-    && rm -f \
+    && ./bin/cryosparcm stop
+
+RUN rm -f \
         /opt/cryosparc/cryosparc_master/cryosparc_master_patch.tar.gz \
         /opt/cryosparc/cryosparc_worker/cryosparc_worker_patch.tar.gz \
     && rm -rf \
