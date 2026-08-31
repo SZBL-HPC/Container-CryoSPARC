@@ -484,6 +484,30 @@ wait_for_web() {
     return 1
 }
 
+should_reset_non_cluster_resources() {
+    [[ "${LOCAL_WORKER_ENABLED}" == true ]] || return 1
+    [[ "${CRYOSPARC_WORKER_KEEPALL+x}" == x ]] && return 1
+    [[ ! -f "${CLUSTER_INFO_PATH}" || ! -f "${CLUSTER_SCRIPT_PATH}" ]]
+}
+
+reset_non_cluster_resources() {
+    should_reset_non_cluster_resources || return 0
+
+    load_license
+    export CRYOSPARC_CONFIG_DIR="${MASTER_CONFIG_DIR}"
+    export CRYOSPARC_LOG_DIR="${MASTER_CONFIG_DIR}/run"
+    printf 'Clearing scheduler resources before registering the local worker...\n'
+    run_master_python <<'PY'
+from core import core, resources
+
+core.startup()
+target_count = len(resources.find_targets())
+if not resources.save_targets([], cleanup=True):
+    raise SystemExit("Failed to clear scheduler resources")
+print(f"Cleared {target_count} scheduler target(s).")
+PY
+}
+
 connect_worker() {
     local gpu_args=()
 
@@ -733,11 +757,18 @@ start_command() {
     fi
 
     if supervisor_running && web_listening; then
-        printf 'already started; skipping start\n'
+        if should_reset_non_cluster_resources; then
+            reset_non_cluster_resources
+            connect_worker
+            printf 'already started; refreshed local worker resources\n'
+        else
+            printf 'already started; skipping start\n'
+        fi
         return 0
     fi
 
     start_core_services
+    reset_non_cluster_resources
     connect_worker
     printf 'started\n'
 }
