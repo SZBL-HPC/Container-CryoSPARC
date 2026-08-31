@@ -76,7 +76,11 @@ pack_images() {
         references+=("${reference}")
     done
 
-    podman save --format docker-archive --output "${archive}" "${references[@]}"
+    podman save \
+        --format docker-archive \
+        --multi-image-archive \
+        --output "${archive}" \
+        "${references[@]}"
     printf 'Saved %s\n' "${archive}"
 }
 
