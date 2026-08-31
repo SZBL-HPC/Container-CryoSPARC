@@ -31,7 +31,7 @@
 | `61005` | supervisord 控制端口 |
 | `61006` | app_api |
 
-`containers/workstation/cryosparc-workstation:277-292` 和 `:302-315` 使用 `127.0.0.1` 检查 API 与 Web，是容器内的正确行为。
+`containers/cryosparc5/cryosparc:277-292` 和 `:302-315` 使用 `127.0.0.1` 检查 API 与 Web，是容器内的正确行为。
 
 Slurm 作业运行在计算节点上，作业中的 `--master` 必须使用计算节点可以访问的地址，即当前环境中的 `173.0.75.3`，不能使用只在容器内部可解析的 `worker-0`。
 
@@ -44,11 +44,11 @@ Slurm 作业运行在计算节点上，作业中的 `--master` 必须使用计�
 /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 ```
 
-`containers/workstation/cryosparc-workstation:528-545` 在初始化时分别调用 `connect_worker()` 和 `connect_cluster()`，因此容器内本地 worker 与 Slurm cluster lane 是两个独立的调度目标。
+`containers/cryosparc5/cryosparc:528-545` 在初始化时分别调用 `connect_worker()` 和 `connect_cluster()`，因此容器内本地 worker 与 Slurm cluster lane 是两个独立的调度目标。
 
-`containers/workstation/cryosparc-workstation:343-348` 允许通过 `CRYOSPARC_CLUSTER_ENABLED=false` 禁用自动 cluster 注册，但不会禁用本地 worker 注册。
+`containers/cryosparc5/cryosparc:343-348` 允许通过 `CRYOSPARC_CLUSTER_ENABLED=false` 禁用自动 cluster 注册，但不会禁用本地 worker 注册。
 
-仓库中的 `containers/workstation/cluster_info.json:2-12` 当前关键配置为：
+仓库中的 `containers/cryosparc5/cluster_info.json:2-12` 当前关键配置为：
 
 ```json
 {
@@ -78,7 +78,7 @@ Slurm 作业运行在计算节点上，作业中的 `--master` 必须使用计�
 
 ### 3.1 原因
 
-旧版 `containers/workstation/cryosparc-workstation:52-60` 的 `detect_hostname()` 只调用 `hostname -f`，容器 hostname 为 `worker-0` 时，就会把以下值写入 runtime config：
+旧版 `containers/cryosparc5/cryosparc:52-60` 的 `detect_hostname()` 只调用 `hostname -f`，容器 hostname 为 `worker-0` 时，就会把以下值写入 runtime config：
 
 ```bash
 CRYOSPARC_MASTER_HOSTNAME=worker-0
@@ -102,7 +102,7 @@ worker-0:61001: [Errno -2] Name or service not known
 
 `CRYOSPARC_MASTER_HOSTNAME` 是当前容器运行状态，不是容器网络配置。容器每次重新创建后，Docker 可能从允许的地址范围分配不同的 IP，因此不能把上一次启动探测到的 IP 当作下一次启动的输入。
 
-当前 `containers/workstation/cryosparc-workstation` 的行为由
+当前 `containers/cryosparc5/cryosparc` 的行为由
 `/opt/cryosparc/cryosparc_master/bin/cluster_info.json` 是否存在决定：
 
 1. 文件存在时，`start`、`restart` 或初始化真正启动核心服务前，`start_core_services()` 重新从默认路由的 source IPv4 获取当前地址。
@@ -120,7 +120,7 @@ worker-0:61001: [Errno -2] Name or service not known
 3. 如果系统没有 `ip`，回退到 `hostname -I`。
 4. 没有 IPv4 时才回退到 hostname。
 
-Dockerfile 已在 `containers/workstation/Dockerfile:31-49` 安装 `iproute2`，因此正式镜像具备该检测能力。
+Dockerfile 已在 `containers/cryosparc5/Dockerfile:31-49` 安装 `iproute2`，因此正式镜像具备该检测能力。
 
 `CRYOSPARC_MASTER_HOSTNAME_AUTO` 只记录这次地址是否由自动探测得到，不再作为下一次启动保留旧 IP 的依据。
 
@@ -129,7 +129,7 @@ Dockerfile 已在 `containers/workstation/Dockerfile:31-49` 安装 `iproute2`，
 
 ### 3.3 Worker 注册
 
-`containers/workstation/cryosparc-workstation` 的 `connect_worker()` 使用以下参数注册 worker：
+`containers/cryosparc5/cryosparc` 的 `connect_worker()` 使用以下参数注册 worker：
 
 ```text
 --master ${MASTER_HOSTNAME}
@@ -203,7 +203,7 @@ Docker 为容器提供的 `/etc/hostname` 仍应以容器自己的 hostname 配�
 因此平台当前同时把两个容器 IP 映射为同一个 `worker-0`，解析顺序具有歧义。
 worker 数据库名称可以稳定使用 `worker-0`，但 master 连接地址仍应使用实际可达 IP，并应避免依赖这个包含重复 IP 的 `/etc/hosts` 条目作为唯一网络发现机制。
 
-`containers/workstation/cluster_script.sh:2-20` 负责渲染 Slurm 作业脚本：
+`containers/cryosparc5/cluster_script.sh:2-20` 负责渲染 Slurm 作业脚本：
 
 - 作业目录使用 `#SBATCH --chdir={{ job_dir_abs }}`。
 - 作业名包含 project UID 和 job UID。
@@ -259,7 +259,7 @@ worker-0.local -> 173.0.75.3
 - 当前应直接使用计算节点可达的 `173.0.75.3`。
 - 如果以后必须使用 `.local` 名称，需要在宿主机配置 Docker bridge 到 IB 的 mDNS reflector，或者使用 host network/DNS；仅在容器内安装 Avahi 不够。
 
-Avahi 当前只是测试依赖，没有集成到 `containers/workstation/entrypoint:5-35`，容器重启后不会自动启动。
+Avahi 当前只是测试依赖，没有集成到 `containers/cryosparc5/entrypoint:5-35`，容器重启后不会自动启动。
 
 ## 6. 服务启动、PID 和端口问题
 
@@ -269,11 +269,11 @@ Avahi 当前只是测试依赖，没有集成到 `containers/workstation/entrypo
 
 当 supervisor 还活着但 database、Redis 和 API 都没有启动时，workstation 脚本会错误地跳过 `cryosparcm start`，然后直接等待 `127.0.0.1:61002`。
 
-当前 `containers/workstation/cryosparc-workstation:202-214` 除了检查 PID，还验证进程命令行中包含 `supervisord` 和 `${MASTER_ROOT}`。
+当前 `containers/cryosparc5/cryosparc:202-214` 除了检查 PID，还验证进程命令行中包含 `supervisord` 和 `${MASTER_ROOT}`。
 
-`containers/workstation/cryosparc-workstation:216-220` 的 `api_listening()` 检查 API 监听状态。
+`containers/cryosparc5/cryosparc:216-220` 的 `api_listening()` 检查 API 监听状态。
 
-如果 supervisor 存活但 API 没有监听，`containers/workstation/cryosparc-workstation:234-275` 会执行 `cryosparcm restart`，而不是把残留 supervisor 当作完整启动状态。
+如果 supervisor 存活但 API 没有监听，`containers/cryosparc5/cryosparc:234-275` 会执行 `cryosparcm restart`，而不是把残留 supervisor 当作完整启动状态。
 
 ### 6.2 PID 文件位置
 
@@ -285,9 +285,9 @@ PID 文件已从 home 下的 runtime 目录移动到：
 
 Dockerfile 的相关逻辑位于：
 
-- `containers/workstation/Dockerfile:123`：先复制 installer 阶段的 `/opt/cryosparc`。
-- `containers/workstation/Dockerfile:130`：设置 `CRYOSPARC_SUPERVISOR_PID_FILE`。
-- `containers/workstation/Dockerfile:145-148`：修改 supervisord 配置并执行 `mkdir -p /var/run && chmod 777 /var/run`。
+- `containers/cryosparc5/Dockerfile:123`：先复制 installer 阶段的 `/opt/cryosparc`。
+- `containers/cryosparc5/Dockerfile:130`：设置 `CRYOSPARC_SUPERVISOR_PID_FILE`。
+- `containers/cryosparc5/Dockerfile:145-148`：修改 supervisord 配置并执行 `mkdir -p /var/run && chmod 777 /var/run`。
 
 这样 supervisor PID 跟随容器运行时文件系统，不会继续遗留在 home volume 中。
 
@@ -315,13 +315,13 @@ sudo ss -ltnp 'sport = :61001'
 
 ## 7. 镜像构建缓存
 
-`containers/workstation/Dockerfile` 当前使用三个最终 target：
+`containers/cryosparc5/Dockerfile` 当前使用三个最终 target：
 
 ```dockerfile
 FROM master0 AS master
 
-COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
-COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+COPY --chmod=644 containers/cryosparc5/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/cryosparc5/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
 FROM master0 AS workstation
 
@@ -329,8 +329,8 @@ COPY --from=installer /opt/cryosparc/cryosparc_worker /opt/cryosparc/cryosparc_w
 
 FROM workstation AS hybrid
 
-COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
-COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+COPY --chmod=644 containers/cryosparc5/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/cryosparc5/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 ```
 
 installer 阶段会统一执行 `chmod -R a+rwX /opt/cryosparc`，因此三个 target
@@ -348,16 +348,16 @@ master target 包含 cluster 配置但不包含 worker 文件；workstation targ
 新容器或清理过 runtime config 的容器：
 
 ```bash
-cryosparc-workstation init
-cryosparc-workstation status
+cryosparc init
+cryosparc status
 ```
 
 需要显式固定计算节点可达地址时：
 
 ```bash
 export CRYOSPARC_MASTER_HOSTNAME=173.0.75.3
-cryosparc-workstation restart
-cryosparc-workstation status
+cryosparc restart
+cryosparc status
 ```
 
 验证容器内服务：

@@ -98,7 +98,7 @@ The image includes the default cluster login host, controlled by the Dockerfile
 
 官方默认值为 `false`，该变量用于绕过 CryoSPARC 对安装目录所有者的安全检查；license
 一致本身不等于可以绕过这个文件所有者检查。由于镜像中的 `/opt/cryosparc` 由 `root`
-所有、服务由映射后的运行用户执行，`cryosparc-workstation env` 会显式设置：
+所有、服务由映射后的运行用户执行，`cryosparc env` 会显式设置：
 
 ```bash
 export CRYOSPARC_FORCE_USER=true

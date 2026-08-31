@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-workstation_cli="${CRYOSPARC_WORKSTATION_CLI:-/usr/local/bin/cryosparc-workstation}"
+workstation_cli="${CRYOSPARC_WORKSTATION_CLI:-/usr/local/bin/cryosparc}"
 if [[ -x "${workstation_cli}" ]]; then
     env_output=""
     if ! env_output="$(${workstation_cli} env)"; then

@@ -38,7 +38,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
     && ssh-keygen -A \
     && rm -rf /var/lib/apt/lists/*
 
-COPY containers/workstation/sshd_config /etc/ssh/sshd_config.d/10-cryosparc.conf
+COPY containers/cryosparc5/sshd_config /etc/ssh/sshd_config.d/10-cryosparc.conf
 
 FROM runtime-base AS installer-base
 
@@ -134,10 +134,10 @@ ENV LANG=en_US.UTF-8 \
     CRYOSPARC_BASE_PORT=61000 \
     CRYOSPARC_SUPERVISOR_PID_FILE=/var/run/cryosparc-supervisord.pid
 
-COPY --chmod=755 containers/workstation/cryosparc-workstation /usr/local/bin/cryosparc-workstation
-COPY --chmod=755 containers/workstation/entrypoint /usr/local/bin/cryosparc-container
-COPY --chmod=755 containers/workstation/cryosparcm /usr/local/bin/cryosparcm
-COPY --chmod=755 containers/workstation/cryosparc-download-data /usr/local/bin/cryosparc-download-data
+COPY --chmod=755 containers/cryosparc5/cryosparc /usr/local/bin/cryosparc
+COPY --chmod=755 containers/cryosparc5/entrypoint /usr/local/bin/cryosparc-container
+COPY --chmod=755 containers/cryosparc5/cryosparcm /usr/local/bin/cryosparcm
+COPY --chmod=755 containers/cryosparc5/cryosparc-download-data /usr/local/bin/cryosparc-download-data
 
 ARG CRYOSPARC_CLUSTER_HOSTS
 RUN if [[ -n "${CRYOSPARC_CLUSTER_HOSTS}" ]] && ! grep -Fqx -- "${CRYOSPARC_CLUSTER_HOSTS}" /etc/hosts; then \
@@ -157,15 +157,15 @@ ENTRYPOINT ["/usr/local/bin/cryosparc-container"]
 
 FROM master0 AS master
 
-COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
-COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+COPY --chmod=644 containers/cryosparc5/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/cryosparc5/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
 
 FROM master0 AS workstation
 
 COPY --from=installer /opt/cryosparc/cryosparc_worker /opt/cryosparc/cryosparc_worker
-COPY --chmod=755 containers/workstation/cryosparcw /usr/local/bin/cryosparcw
+COPY --chmod=755 containers/cryosparc5/cryosparcw /usr/local/bin/cryosparcw
 
 FROM workstation AS hybrid
 
-COPY --chmod=644 containers/workstation/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
-COPY --chmod=644 containers/workstation/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh
+COPY --chmod=644 containers/cryosparc5/cluster_info.json /opt/cryosparc/cryosparc_master/bin/cluster_info.json
+COPY --chmod=644 containers/cryosparc5/cluster_script.sh /opt/cryosparc/cryosparc_master/bin/cluster_script.sh

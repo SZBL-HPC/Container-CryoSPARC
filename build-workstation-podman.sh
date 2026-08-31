@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
-DOCKERFILE_PATH="${ROOT_DIR}/containers/workstation/Dockerfile"
+DOCKERFILE_PATH="${ROOT_DIR}/containers/cryosparc5/Dockerfile"
 
 usage() {
     printf 'Usage: %s [--target master|workstation|hybrid] [--tags tag[,tag...]] [--run]\n' "$0"

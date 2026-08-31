@@ -50,20 +50,20 @@ services because user creation and worker registration depend on the API.
 
 ## Runtime Workflow
 
-The image management command is `cryosparc-workstation`; the container entrypoint
+The image management command is `cryosparc`; the container entrypoint
 is `cryosparc-container`. The entrypoint starts `sshd` as a daemon. With no
 arguments the management command runs `init`, `start`, and `status`, then
 returns. The separate container entrypoint keeps the container alive. The persistent
 database, license, logs, scratch data, and project data are outside the image.
 
 ```bash
-cryosparc-workstation init
-cryosparc-workstation status
-cryosparc-workstation stop
-cryosparc-workstation start
-cryosparc-workstation reset user
-cryosparc-workstation reset data
-cryosparc-workstation reset all
+cryosparc init
+cryosparc status
+cryosparc stop
+cryosparc start
+cryosparc reset user
+cryosparc reset data
+cryosparc reset all
 ```
 
 The default first-user values are:

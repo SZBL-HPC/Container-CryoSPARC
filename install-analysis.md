@@ -399,7 +399,7 @@ bin/cryosparcw connect --worker "$MASTER_HOSTNAME" \
   --master "$MASTER_HOSTNAME" --port "$BASE_PORT" ...
 ```
 
-但当前仓库的 `containers/workstation/cryosparc-workstation` wrapper 会在
+但当前仓库的 `containers/cryosparc5/cryosparc` wrapper 会在
 `CRYOSPARC_NOGPU=true`、`nvidia-smi` 不存在或 GPU 查询失败时自动追加
 `--no-gpu`。因此：
 

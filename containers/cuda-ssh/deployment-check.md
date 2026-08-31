@@ -581,8 +581,8 @@ import log 显示 GridView 构建过程新增了这些内容：
 新增文件：
 
 ```text
-containers/workstation/Dockerfile
-containers/workstation/cryosparc-workstation
+containers/cryosparc5/Dockerfile
+containers/cryosparc5/cryosparc
 ```
 
 Dockerfile 的主要阶段如下：
@@ -592,7 +592,7 @@ Dockerfile 的主要阶段如下：
 3. `installer`：只复制 `pkg/` 根目录下的 patch 包，使用 `--exclude='pkg/*/**'` 排除备份旧版等子目录，并运行存在的 master/worker 安装器；如果本地存在 patch 包则在构建期间安装，否则跳过。构建期间临时使用数据库完成安装和 patch。
 4. `master0`、`master`、`workstation`、`hybrid`：从安装阶段复制对应最终安装目录，不携带预初始化数据库或用户。
 
-构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `cryosparc-workstation` 输入。
+构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `cryosparc` 输入。
 
 ### 12.2 gpu14 构建结果
 
@@ -617,7 +617,7 @@ localhost/cryosparc-workstation:test3
 - master patch 和 worker patch 均从 `pkg/` 本地包安装。
 - 构建期间 master 数据库和 patch 安装成功；最终镜像不包含该临时数据库。
 
-### 12.3 cryosparc-workstation 启动测试
+### 12.3 cryosparc 启动测试
 
 使用 rootless Podman 的 `--userns=keep-id` 运行测试。直接指定容器内 `1000:1000` 会因当前 rootless UID 映射不能写入 home 挂载；`--userns=keep-id` 可以正确保持用户 home 的 UID/GID。
 
@@ -625,7 +625,7 @@ localhost/cryosparc-workstation:test3
 
 | 检查项 | 结果 |
 | --- | --- |
-| 首次 license 配置 | 通过；本次 smoke test 用环境变量模拟输入，license 保存到 `~/.cryosparc/license_id`；TTY 交互由 `cryosparc-workstation` 通过默认入口提供 |
+| 首次 license 配置 | 通过；本次 smoke test 用环境变量模拟输入，license 保存到 `~/.cryosparc/license_id`；TTY 交互由 `cryosparc` 通过默认入口提供 |
 | license 文件权限 | `600`，由运行用户拥有 |
 | 首次 init 数据库 | 通过；运行时在 `~/.cryosparc/cryosparc_database` 初始化 WiredTiger 数据 |
 | scratch 目录 | 通过；worker target 默认使用 `/ssd`，可由 `CRYOSPARC_SCRATCH_PATH` 覆盖 |
@@ -637,7 +637,7 @@ localhost/cryosparc-workstation:test3
 | 无 GPU 运行 | 通过；worker 使用 `--no-gpu`，不启用 GPU 资源 |
 | base port | 通过；`61000` 返回 HTTP `200` |
 
-`cryosparc-workstation` 的默认行为是 `init`、`start`、`status`；初始化用户和数据库保存在运行用户的 home 中。停止后再次启动时不再传入 license 环境变量，脚本从已保存的 `~/.cryosparc/license_id` 和数据库继续启动，master、worker 和 61000 均恢复正常。
+`cryosparc` 的默认行为是 `init`、`start`、`status`；初始化用户和数据库保存在运行用户的 home 中。停止后再次启动时不再传入 license 环境变量，脚本从已保存的 `~/.cryosparc/license_id` 和数据库继续启动，master、worker 和 61000 均恢复正常。
 
 本 workstation smoke test 验证的是 CryoSPARC 原生 base port 的 HTTP 服务。CryoSPARC 本身不会因为此 Dockerfile 自动变成 TLS；如果平台要求 61000 在容器内必须是 HTTPS，需要另外配置证书和 TLS 终止层，并将 CryoSPARC 原生 HTTP 端口改为内部端口。
 

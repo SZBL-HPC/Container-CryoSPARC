@@ -95,23 +95,23 @@ With no command arguments, the entrypoint performs `init`, `start`, and
 
 ## Service Commands
 
-The management command is `/usr/local/bin/cryosparc-workstation`. The container
+The management command is `/usr/local/bin/cryosparc`. The container
 entrypoint is `/usr/local/bin/cryosparc-container`; it starts `sshd` as a daemon,
 keeps only the container alive, and leaves CryoSPARC services under supervisord.
 The image also provides `/usr/local/bin/cryosparc-download-data`, backed by
 `aria2c`.
 
 ```bash
-cryosparc-workstation init
-cryosparc-workstation start
-cryosparc-workstation status
-eval "$(cryosparc-workstation env)"
-cryosparc-workstation shell
-cryosparc-workstation stop
-cryosparc-workstation restart
-cryosparc-workstation reset user
-cryosparc-workstation reset data
-cryosparc-workstation reset all
+cryosparc init
+cryosparc start
+cryosparc status
+eval "$(cryosparc env)"
+cryosparc shell
+cryosparc stop
+cryosparc restart
+cryosparc reset user
+cryosparc reset data
+cryosparc reset all
 cryosparc-download-data --dataset 10025
 cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 ```
@@ -119,12 +119,13 @@ cryosparc-download-data --dataset PERFORMANCE_BENCHMARK_DATA --output-dir /ssd
 - `init` creates the runtime database and first admin user. Defaults are email `hpc@szbl.ac.cn`, name `Cryo Sparc`, username `hpc`, and password `SZBL2026`. Interactive prompts show each default in an editable input buffer; press Enter to accept it, or edit it with readline before submitting.
 - `start` skips with `already started` when the Web service is already listening.
 - `status` reports CryoSPARC process state, Web port, listening address, and container URL.
-- `env` prints runtime exports for direct `cryosparcm` commands and, in the `workstation` and `hybrid` targets, `cryosparcw` commands; activate them with `eval "$(cryosparc-workstation env)"`.
+- `env` prints runtime exports for direct `cryosparcm` commands and, in the `workstation` and `hybrid` targets, `cryosparcw` commands; activate them with `eval "$(cryosparc env)"`.
 - `shell` opens an interactive shell with the CryoSPARC runtime environment already loaded; type `exit` to return.
 - `/usr/local/bin/cryosparcm` automatically loads the same workstation environment before invoking the master CLI.
 - The container intentionally sets `CRYOSPARC_FORCE_USER=true` because `/opt/cryosparc` is root-owned in the image while services run as the mapped runtime user. A normal non-container installation should keep the documented default `false` unless an owner check must be bypassed.
 - `stop` stops CryoSPARC services but leaves the container available for a later `start`.
 - The `workstation` and `hybrid` targets automatically register their local worker with `--ssdpath /ssd --ssdreserve 768` (MB). Set `CRYOSPARC_SCRATCH_PATH` to override the scratch path and `CRYOSPARC_SSD_RESERVE` to override the SSD reservation.
+- In the non-cluster `workstation` target, `start` clears existing scheduler resources before registering the local worker unless `CRYOSPARC_WORKER_KEEPALL` is set. Set this variable when existing resources must be preserved.
 - Cluster configuration uses the fixed files `/opt/cryosparc/cryosparc_master/bin/cluster_info.json` and `/opt/cryosparc/cryosparc_master/bin/cluster_script.sh`; set `CRYOSPARC_CLUSTER_ENABLED=false` to disable automatic Slurm registration.
 - When `cluster_info.json` exists, startup advertises a reachable IPv4 address to the master and cluster jobs (auto-detected unless an explicit IPv4 is provided); without it, startup uses the container hostname and skips automatic cluster registration.
 - The Slurm template requests at least one GPU through `--gres=gpu:{{ 1 if num_gpu < 1 else num_gpu }}`; the `NV_4090D` partition supplies its configured CPU and memory per GPU defaults. CryoSPARC v5 supports both GPU and Multi-GPU job types, so a multi-GPU request remains dynamic while CPU-only jobs are promoted to one GPU on this cluster lane.
