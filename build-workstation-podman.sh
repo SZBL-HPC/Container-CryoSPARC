@@ -184,9 +184,11 @@ build_target() {
         --file "${DOCKERFILE_PATH}"
         --tag "${image_name}"
     )
-    for tag in "${EXTRA_TAGS[@]}"; do
-        build_command+=(--tag "${image_prefix}:${tag}")
-    done
+    if (( ${#EXTRA_TAGS[@]} > 0 )); then
+        for tag in "${EXTRA_TAGS[@]}"; do
+            build_command+=(--tag "${image_prefix}:${tag}")
+        done
+    fi
     build_command+=("${BUILD_ARGS[@]}" "${ROOT_DIR}")
 
     printf '%q ' "${build_command[@]}"
