@@ -56,6 +56,19 @@ ARM 主机上构建需要 Podman 提供相应的 amd64 模拟支持。
 构建单个 target 时可以用 `IMAGE_NAME` 覆盖标签；构建全部 target 时用
 `MASTER_IMAGE_NAME`、`WORKSTATION_IMAGE_NAME` 和 `HYBRID_IMAGE_NAME` 分别覆盖标签。
 
+可以使用 `transfer-workstation-images.sh` 在机器之间传输镜像。`pack` 依赖
+Podman，将三个镜像合并为一个 Docker archive；`extract` 依赖 Skopeo 和 `jq`，
+根据 archive 中的 `manifest.json` 将其拆成三个独立的 tar：
+
+```bash
+./transfer-workstation-images.sh pack cryosparc-v507-all.tar v507
+./transfer-workstation-images.sh extract cryosparc-v507-all.tar
+```
+
+`pack` 的 tag 默认为 `latest`。`extract` 的输出目录默认为 tar 文件名去掉
+`.tar.gz`、`.tgz` 或 `.tar` 后缀，也可以显式指定目录；输出文件名为
+`cryosparc-master.tar`、`cryosparc-workstation.tar` 和 `cryosparc-hybrid.tar`。
+
 The build license above is only a placeholder. Use a real license through the
 environment when building locally, and never commit it.
 
