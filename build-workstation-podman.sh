@@ -45,14 +45,72 @@ if [[ -n "${TARGET}" ]]; then
             exit 2
             ;;
     esac
-    BUILD_TARGETS=("${TARGET}")
-else
-    BUILD_TARGETS=(master workstation hybrid)
 fi
 
 if [[ ! -f "${DOCKERFILE_PATH}" ]]; then
     printf 'Dockerfile not found: %s\n' "${DOCKERFILE_PATH}" >&2
     exit 1
+fi
+
+PKG_DIR="${ROOT_DIR}/pkg"
+MASTER_PACKAGE="${PKG_DIR}/cryosparc_master.tar.gz"
+WORKER_PACKAGE="${PKG_DIR}/cryosparc_worker.tar.gz"
+MASTER_PATCH="${PKG_DIR}/cryosparc_master_patch.tar.gz"
+WORKER_PATCH="${PKG_DIR}/cryosparc_worker_patch.tar.gz"
+UPDATE_PACKAGES="${ROOT_DIR}/update-packages.sh"
+
+if [[ ! -f "${MASTER_PACKAGE}" && ! -f "${WORKER_PACKAGE}" ]]; then
+    if [[ ! -f "${UPDATE_PACKAGES}" ]]; then
+        printf 'Package updater not found: %s\n' "${UPDATE_PACKAGES}" >&2
+        exit 1
+    fi
+    printf 'No CryoSPARC packages found in %s; running %s\n' \
+        "${PKG_DIR}" "${UPDATE_PACKAGES}"
+    bash "${UPDATE_PACKAGES}"
+fi
+
+HAS_MASTER_PACKAGE=false
+HAS_WORKER_PACKAGE=false
+if [[ -f "${MASTER_PACKAGE}" ]]; then
+    HAS_MASTER_PACKAGE=true
+fi
+if [[ -f "${WORKER_PACKAGE}" ]]; then
+    HAS_WORKER_PACKAGE=true
+fi
+
+if [[ "${HAS_MASTER_PACKAGE}" == false && "${HAS_WORKER_PACKAGE}" == true ]]; then
+    printf 'Worker package exists without master package: %s\n' "${WORKER_PACKAGE}" >&2
+    exit 1
+fi
+if [[ "${HAS_MASTER_PACKAGE}" == false ]]; then
+    printf 'Master package not found: %s\n' "${MASTER_PACKAGE}" >&2
+    exit 1
+fi
+if [[ "${HAS_WORKER_PACKAGE}" == false && -f "${WORKER_PATCH}" ]]; then
+    printf 'Worker patch exists without worker package: %s\n' "${WORKER_PATCH}" >&2
+    exit 1
+fi
+
+if [[ -n "${TARGET}" ]]; then
+    if [[ "${TARGET}" != master && "${HAS_WORKER_PACKAGE}" == false ]]; then
+        printf '%s target requires the worker package: %s\n' \
+            "${TARGET}" "${WORKER_PACKAGE}" >&2
+        exit 1
+    fi
+    BUILD_TARGETS=("${TARGET}")
+elif [[ "${HAS_WORKER_PACKAGE}" == true ]]; then
+    BUILD_TARGETS=(master workstation hybrid)
+else
+    BUILD_TARGETS=(master)
+fi
+
+INCLUDE_MASTER_PATCH=false
+INCLUDE_WORKER_PATCH=false
+if [[ -f "${MASTER_PATCH}" ]]; then
+    INCLUDE_MASTER_PATCH=true
+fi
+if [[ -f "${WORKER_PATCH}" ]]; then
+    INCLUDE_WORKER_PATCH=true
 fi
 
 MASTER_IMAGE_NAME="${MASTER_IMAGE_NAME:-localhost/cryosparc-master:latest}"
@@ -81,6 +139,9 @@ fi
 BUILD_ARGS=(
     --build-arg "CUDA_IMAGE=${CUDA_IMAGE}"
     --build-arg "CRYOSPARC_WORKER_NOGPU=${WORKER_NOGPU}"
+    --build-arg "CRYOSPARC_INCLUDE_WORKER=${HAS_WORKER_PACKAGE}"
+    --build-arg "CRYOSPARC_INCLUDE_MASTER_PATCH=${INCLUDE_MASTER_PATCH}"
+    --build-arg "CRYOSPARC_INCLUDE_WORKER_PATCH=${INCLUDE_WORKER_PATCH}"
 )
 
 for name in CRYOSPARC_BUILD_LICENSE_ID CRYOSPARC_CLUSTER_HOSTS; do

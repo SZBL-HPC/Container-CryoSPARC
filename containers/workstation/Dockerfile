@@ -4,23 +4,9 @@
 
 ARG CUDA_IMAGE=nvidia/cuda:12.8.2-base-ubuntu24.04
 ARG CRYOSPARC_CLUSTER_HOSTS="12.12.4.3 login03 login03.szbl.hpc etcd_node"
-
-FROM ubuntu:24.04 AS package-unpack
-
-WORKDIR /build
-
-COPY pkg /build/pkg
-
-RUN mkdir -p \
-        /opt/cryosparc/cryosparc_master \
-        /opt/cryosparc/cryosparc_worker \
-        /opt/cryosparc/initial \
-    && tar -xzf /build/pkg/cryosparc_master.tar.gz \
-        --strip-components=1 \
-        --directory /opt/cryosparc/cryosparc_master \
-    && tar -xzf /build/pkg/cryosparc_worker.tar.gz \
-        --strip-components=1 \
-        --directory /opt/cryosparc/cryosparc_worker
+ARG CRYOSPARC_INCLUDE_WORKER=true
+ARG CRYOSPARC_INCLUDE_MASTER_PATCH=false
+ARG CRYOSPARC_INCLUDE_WORKER_PATCH=false
 
 FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime-base
 
@@ -58,15 +44,42 @@ RUN apt-get update \
 
 COPY containers/workstation/sshd_config /etc/ssh/sshd_config.d/10-cryosparc.conf
 
-FROM runtime-base AS installer
+FROM runtime-base AS installer-base
 
 ARG CRYOSPARC_BUILD_LICENSE_ID=00000000-0000-0000-0000-000000000000
 ARG CRYOSPARC_WORKER_NOGPU=true
 
 ENV CRYOSPARC_FORCE_HOSTNAME=true
 
-COPY --from=package-unpack /opt/cryosparc /opt/cryosparc
-COPY --from=package-unpack /build/pkg /build/pkg
+# Podman automatically unpacks local archives; its Dockerfile parser does not
+# support the explicit --unpack=true option.
+ADD pkg/cryosparc_master.tar.gz /opt/cryosparc/
+
+# Optional package stages are selected by boolean build args. Unselected stages
+# are not evaluated, so missing worker or patch archives are valid.
+FROM installer-base AS installer-worker-true
+
+ADD pkg/cryosparc_worker.tar.gz /opt/cryosparc/
+
+FROM installer-base AS installer-worker-false
+
+FROM installer-worker-${CRYOSPARC_INCLUDE_WORKER} AS installer-worker-selected
+
+FROM installer-worker-selected AS installer-master-patch-true
+
+COPY pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/
+
+FROM installer-worker-selected AS installer-master-patch-false
+
+FROM installer-master-patch-${CRYOSPARC_INCLUDE_MASTER_PATCH} AS installer-master-patch-selected
+
+FROM installer-master-patch-selected AS installer-worker-patch-true
+
+COPY pkg/cryosparc_worker_patch.tar.gz /opt/cryosparc/cryosparc_worker/
+
+FROM installer-master-patch-selected AS installer-worker-patch-false
+
+FROM installer-worker-patch-${CRYOSPARC_INCLUDE_WORKER_PATCH} AS installer
 
 # The bundled installer probes the license server for patches. The patch files
 # are supplied locally, so skip that network-only probe and install them below.
@@ -83,21 +96,17 @@ RUN cd /opt/cryosparc/cryosparc_master \
         --yes \
         --ignore-port-conflicts
 
-RUN worker_args=() \
-    && if [[ "${CRYOSPARC_WORKER_NOGPU}" == "true" ]]; then worker_args+=(--nogpu); fi \
-    && cd /opt/cryosparc/cryosparc_worker \
-    && ./install.sh \
-        --license "${CRYOSPARC_BUILD_LICENSE_ID}" \
-        --yes \
-        "${worker_args[@]}"
+RUN if [[ -f /opt/cryosparc/cryosparc_worker/install.sh ]]; then \
+        worker_args=() \
+        && if [[ "${CRYOSPARC_WORKER_NOGPU}" == "true" ]]; then worker_args+=(--nogpu); fi \
+        && cd /opt/cryosparc/cryosparc_worker \
+        && ./install.sh \
+            --license "${CRYOSPARC_BUILD_LICENSE_ID}" \
+            --yes \
+            "${worker_args[@]}"; \
+    fi
 
-RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
-        cp /build/pkg/cryosparc_master_patch.tar.gz /opt/cryosparc/cryosparc_master/; \
-    fi \
-    && if [[ -f /build/pkg/cryosparc_worker_patch.tar.gz ]]; then \
-        cp /build/pkg/cryosparc_worker_patch.tar.gz /opt/cryosparc/cryosparc_worker/; \
-    fi \
-    && export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
+RUN export PATH=/opt/cryosparc/cryosparc_master/bin:/opt/cryosparc/cryosparc_worker/bin:$PATH \
     && cd /opt/cryosparc/cryosparc_master \
     && ./bin/cryosparcm start \
     && if [[ -f /opt/cryosparc/cryosparc_master/cryosparc_master_patch.tar.gz ]]; then \
@@ -115,8 +124,7 @@ RUN if [[ -f /build/pkg/cryosparc_master_patch.tar.gz ]]; then \
     && rm -rf \
         /opt/cryosparc/cryosparc_master/run \
         /opt/cryosparc/cryosparc_worker/run \
-        /opt/cryosparc/initial \
-        /build/pkg
+        /opt/cryosparc/initial
 
 RUN chmod -R a+rwX /opt/cryosparc
 

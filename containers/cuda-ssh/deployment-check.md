@@ -585,12 +585,12 @@ containers/workstation/Dockerfile
 containers/workstation/cryosparc-workstation
 ```
 
-Dockerfile 使用四个阶段：
+Dockerfile 的主要阶段如下：
 
-1. `package-unpack`：从 `pkg/cryosparc_master.tar.gz` 和 `pkg/cryosparc_worker.tar.gz` 解压安装文件。
-2. `runtime-base`：准备 CUDA 12.8.2、OpenSSH、运行库和诊断工具。
+1. `runtime-base`：准备 CUDA 12.8.2、OpenSSH、运行库和诊断工具。
+2. `installer-base` 及可选 package stages：始终直接解包 master 包；`CRYOSPARC_INCLUDE_WORKER` 默认开启，按需解包 worker 包；两个 patch 包分别由默认关闭的 ARG 控制 `COPY`。
 3. `installer`：运行 master/worker 安装器；如果本地存在 master/worker patch 包则在构建期间安装，否则跳过 patch。构建期间临时使用数据库完成安装和 patch。
-4. `workstation`：只从安装阶段复制最终安装目录和 `cryosparc-workstation`，不携带预初始化数据库或用户。
+4. `master0`、`master`、`workstation`、`hybrid`：从安装阶段复制对应最终安装目录，不携带预初始化数据库或用户。
 
 构建默认使用 `CRYOSPARC_WORKER_NOGPU=true`，因此构建机器不需要 GPU。构建阶段使用格式合法的占位 license；真实 license 不写入镜像，在首次运行时由 `cryosparc-workstation` 输入。
 

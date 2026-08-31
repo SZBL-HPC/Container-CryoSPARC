@@ -2,7 +2,8 @@
 
 set -Eeuo pipefail
 
-PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+PKG_DIR="${ROOT_DIR}/pkg"
 TMP_DIR="${PKG_DIR}/tmp"
 BASE_URL="${CRYOSPARC_LICENSE_SERVER_ADDR:-https://get.cryosparc.com}"
 BASE_URL="${BASE_URL%/}"
@@ -10,9 +11,9 @@ BASE_URL="${BASE_URL%/}"
 usage() {
     cat <<'EOF'
 Usage:
-  pkg/update-packages.sh [LICENSE_ID] [VERSION]
-  pkg/update-packages.sh --check [LICENSE_ID]
-  pkg/update-packages.sh --list [LICENSE_ID]
+  update-packages.sh [LICENSE_ID] [VERSION]
+  update-packages.sh --check [LICENSE_ID]
+  update-packages.sh --list [LICENSE_ID]
 
 Environment overrides:
   CRYOSPARC_LICENSE_ID
