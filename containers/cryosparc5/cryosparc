@@ -770,6 +770,7 @@ start_command() {
     start_core_services
     reset_non_cluster_resources
     connect_worker
+    connect_cluster
     printf 'started\n'
 }
 
